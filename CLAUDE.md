@@ -20,9 +20,11 @@ events; semantic search; staging/committing/pushing `.warlog/` changes.
 ## Current state
 
 Repository bootstrap and governance only. The code scaffold arrives with US-93; document the real
-structure here as it lands — do not describe structure that does not exist yet.
+structure here as it lands. The release workflow is wired, but **no Release PR may be merged
+before US-93 lands `package.json`, the lockfile and `.nvmrc`** (the `publish` job fails fast
+without them).
 
-## Architecture (plan §1, §4, §7)
+## Architecture (planned — plan §1, §4, §7; materialized from US-93 on)
 
 - One npm package `@scrapup/warlog`: a core library plus two thin adapters (MCP over stdio, CLI).
 - **Operation registry → mediator → behaviors → handler.** Each operation is defined once (name,
