@@ -1,0 +1,29 @@
+@startuml
+title US-99 / US-101 - AAR response, lesson promotion and recall
+actor Agent as a
+participant "Mediator" as med
+participant "response_create" as rc
+participant "response_promote" as rp
+participant "memory_recall" as mr
+participant "Index" as idx
+database "Store" as fs
+a -> med: response_create {questionnaire: aar, subject: task}
+med -> rc: handle
+rc -> idx: questionnaire aar (repo overrides global)
+alt Missing required answer / invalid option
+  rc --> a: VALIDATION (every invalid question)
+else Valid
+  rc -> fs: write response (copy of questions)
+  rc --> a: response id
+end
+a -> med: response_promote {response, question: improve, item: 0, kind: guardrail, scope: repo}
+med -> rp: handle
+rp -> fs: write memory (links: derived_from response)
+rp --> a: memory id
+... later session ...
+a -> med: memory_recall {query: "flaky watcher windows"}
+med -> mr: handle
+mr -> idx: literal token match on title/body/tags
+mr -> fs: append activity recalled (per machine)
+mr --> a: table ranked by scope -> matches -> recency
+@enduml

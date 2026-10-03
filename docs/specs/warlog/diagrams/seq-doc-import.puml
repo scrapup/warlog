@@ -1,0 +1,33 @@
+@startuml
+title US-102 - doc_import of an opportunity folder (copy and reference; failures)
+actor "Agent / User" as a
+participant "doc_import handler" as h
+participant "DocumentImporter" as di
+participant "Linear matchers" as lm
+participant "FileRepository" as repo
+database "Source repo files" as src
+database "<area>/docs/<epic>/<opportunity>" as dst
+a -> h: doc_import {path: docs/specs/e/o/, area: repo, mode}
+h -> di: import
+di -> di: path inside working tree or allowed_roots (realpath)
+alt Outside allowed paths
+  di --> a: VALIDATION (path)
+else
+  di -> src: read files, check sizes (2 MB md / 10 MB asset)
+  di -> lm: scan headings, image links, secrets
+  alt tasks.md and single-tasks.md together / missing image / link escapes / secret / SDD sections missing
+    di --> a: VALIDATION or SECRET_REJECTED (nothing written)
+  else Valid
+    alt mode = reference
+      di -> repo: write .meta (source path, sha256) + .toc
+    else mode = copy
+      opt version requested
+        di -> repo: snapshot to versions/<kind>/<n>/
+      end
+      di -> repo: write assets (+ .puml), rewritten document, .meta, .toc (document last)
+    end
+    repo -> dst: atomic writes
+    di --> a: summary {ids, kinds, sections, assets, warnings}
+  end
+end
+@enduml

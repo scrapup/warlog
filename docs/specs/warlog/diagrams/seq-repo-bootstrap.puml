@@ -1,0 +1,45 @@
+@startuml
+title warlog - repository creation and baseline rollout (success and failure paths)
+
+actor "Adopter (agent)" as ad
+actor "Validator (owner)" as val
+participant "gh CLI" as gh
+participant "GitHub" as gitHub
+participant "Local working copy\n~/Develop/scrapup/warlog" as local
+
+ad -> gh: gh auth status + org admin check
+alt Not authenticated / no admin
+  gh --> ad: error
+  ad --> val: report error, stop (no alternative credentials)
+else OK
+  ad -> gh: gh repo view scrapup/warlog
+  alt Repository exists
+    gh --> ad: found
+    ad --> val: report, stop (no rename without decision)
+  else Not found
+    ad -> local: git init -b main; bootstrap commit (LICENSE, README, .gitignore)
+    ad -> gh: gh repo create scrapup/warlog --public --source . --push
+    gh -> gitHub: create repo + push bootstrap commit (only direct push)
+    ad -> gh: Phase A - settings (merge, actions, fork approval, security features)
+    gh -> gitHub: PATCH/PUT settings
+    ad -> val: Phase A' - human-only settings (dependency graph UI, team write access)
+    val -> gitHub: enable in UI
+    ad -> gh: Phase B - rulesets main-review, main-integrity (no checks yet), release-tags
+    gh -> gitHub: POST rulesets (active)
+    ad -> gh: direct push probe
+    gitHub --> ad: rejected (evidence)
+    ad -> local: branch docs/initial-specification; docs + governance files; explicit git add
+    ad -> gh: gh pr create "docs: add warlog specification and repository governance"
+    gitHub -> gitHub: run validate, dependency-review; CodeQL default setup analysis
+    alt A check fails or never reports
+      gitHub --> ad: red / missing
+      ad -> local: fix in the same PR (never bypass)
+    else All checks reported green
+      ad -> gh: Phase C - add validate + dependency-review + code_scanning to main-integrity
+      val -> gitHub: approve via admin bypass at merge, squash merge
+      ad -> gh: Phase D - probes (invalid title PR blocked, review required shown)
+      ad -> val: evidence table SEC-01..SEC-31
+    end
+  end
+end
+@enduml

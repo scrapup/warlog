@@ -1,0 +1,41 @@
+@startuml
+!include <C4/C4_Container>
+title warlog - C4 Level 2 (Containers)
+
+Person(agent, "Agent", "AI coding agent session (Claude Code)")
+Person(user, "User", "Configures, reads and edits the store; resolves conflicts")
+Person(script, "Script / hook", "Shell scripts and Claude Code hooks")
+System_Ext(sync, "Sync service", "Dropbox / iCloud / Syncthing - replicates the store folder")
+System_Ext(git, "git", "Local git CLI - remote URL and current branch")
+System_Ext(machinecfg, "Machine config", "~/.config/warlog - machine id, local config (never synced)")
+
+System_Boundary(wl, "warlog (npm package @scrapup/warlog)") {
+  Container(mcp, "MCP server", "Node.js 22, TypeScript, MCP SDK, stdio", "Adapter: exposes every registered operation as an MCP tool")
+  Container(cli, "CLI", "Node.js 22, TypeScript, commander", "Adapter: exposes every registered operation as warlog <group> <action>; --file, --validate, --format, help")
+  Container(core, "Core", "TypeScript library", "Operation registry + mediator + pipeline behaviors + domain handlers + file store + in-memory index")
+}
+
+ContainerDb(store, "Global store", "Markdown + YAML front matter, YAML, JSONL", "$WARLOG_DIR: global/, templates/, activity/, repos/<repo-key>/ (global mode)")
+ContainerDb(repostore, "Repository store", "Markdown + YAML front matter, YAML, JSONL", "<main-worktree>/.warlog/ - versioned with the repository by default")
+Container(plugin, "Agent plugin", "Claude Code plugin", "plugin.json + .mcp.json + skills/warlog (operations catalog generated from the registry)")
+System_Ext(vcs, "Repository remote", "git hosting - carries .warlog/ between machines")
+
+Rel(agent, mcp, "Calls tools", "MCP / stdio")
+Rel(script, cli, "Runs commands", "process exec")
+Rel(user, cli, "Runs commands, help, --file input", "terminal")
+Rel(user, store, "Reads / edits files by hand", "editor, Obsidian")
+Rel(user, repostore, "Reads / edits / commits", "editor, git")
+Rel(mcp, core, "mediator.send(operation, input, context)")
+Rel(cli, core, "mediator.send(operation, input, context)")
+Rel(core, store, "Scan, watch, atomic write, append activity", "fs")
+Rel(core, repostore, "Scan, watch, atomic write, append activity (never commits)", "fs")
+Rel(plugin, mcp, "Registers and starts", "npx warlog mcp")
+Rel(agent, plugin, "Loads skill")
+Rel(repostore, vcs, "Versioned by the User / workflow", "git")
+Rel(core, git, "Resolve repo key and branch", "child process")
+Rel(core, machinecfg, "Read machine id / config", "fs")
+Rel(sync, store, "Replicates files between machines")
+
+LAYOUT_LEFT_RIGHT()
+SHOW_LEGEND()
+@enduml

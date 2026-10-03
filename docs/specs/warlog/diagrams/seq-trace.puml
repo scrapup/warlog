@@ -1,0 +1,16 @@
+@startuml
+title US-100 - trace from a task (success and pending links)
+actor Agent as a
+participant "trace handler" as t
+participant "Index" as idx
+a -> t: trace {id: task, depth: 3}
+t -> idx: links_of(task) both directions
+loop until depth or no new nodes
+  idx --> t: edges (implements, tests, commit, derived_from, relates)
+  alt Target not present (still syncing)
+    t -> t: mark edge pending
+  end
+end
+t -> idx: story, epic, external keys of visited nodes
+t --> a: matrix use case | story | task | test | commit | external key (+ pending)
+@enduml

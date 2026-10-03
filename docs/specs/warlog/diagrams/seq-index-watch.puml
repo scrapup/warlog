@@ -1,0 +1,31 @@
+@startuml
+title US-96 - index build, watcher and doctor (success and failure)
+participant "Composition root" as c
+participant "IndexBuilder" as ib
+participant "FileRepository" as repo
+participant "Index" as idx
+participant "Watcher" as w
+database "Global root + .warlog" as fs
+c -> ib: build(roots)
+ib -> fs: list *.md / *.yaml (skip temp files)
+loop files (bounded concurrency 64)
+  ib -> repo: read + parse
+  alt Parse error / merge markers
+    repo --> ib: InvalidFile(reason)
+    ib -> idx: addInvalid(path, reason)
+  else Conflict-copy name
+    ib -> idx: addConflictCopy(path)
+  else OK
+    ib -> idx: upsert(entity); links; external keys
+  end
+end
+ib -> idx: resolve pending links; aggregate activity (90 days)
+ib --> c: stats {files, ms, invalid, conflicts}
+c -> w: start(roots)
+fs -> w: change event (sync / git pull / other session)
+w -> w: debounce per path
+w -> ib: reload(path)
+alt Watcher error (EMFILE / unsupported)
+  w -> w: fallback: full rescan every 5 s
+end
+@enduml
