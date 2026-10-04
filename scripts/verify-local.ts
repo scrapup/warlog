@@ -5,8 +5,10 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 
-/** Ordered npm script invocations (script name and extra arguments). */
-// Keep in sync with the `verify` job steps of .github/workflows/ci.yml.
+/**
+ * Ordered npm script invocations (script name and extra arguments).
+ * Keep in sync with the `verify` job steps of .github/workflows/ci.yml.
+ */
 const STEPS: readonly (readonly [string, ...string[]])[] = [
   ['typecheck'],
   ['lint'],

@@ -89,6 +89,15 @@ async function readProofs(fs: RulesFileSystem, dir: string): Promise<RuleProof[]
 }
 
 /**
+ * Builds a failed outcome with the standard prefix.
+ * @param reason - Why the check failed.
+ * @returns The failed outcome.
+ */
+function failure(reason: string): RulesCoverageOutcome {
+  return { exitCode: 1, message: `rules-coverage failed: ${reason}` };
+}
+
+/**
  * Turns a coverage result into the run outcome.
  * @param result - Coverage result.
  * @param specPath - Specification path (for messages).
@@ -96,7 +105,7 @@ async function readProofs(fs: RulesFileSystem, dir: string): Promise<RuleProof[]
  */
 function outcomeOf(result: CoverageResult, specPath: string): RulesCoverageOutcome {
   if (result.absentFromSpec.length > 0) {
-    return { exitCode: 1, message: `rules-coverage failed: ${specPath} lacks code-level rules ${result.absentFromSpec.join(', ')}` };
+    return failure(`${specPath} lacks code-level rules ${result.absentFromSpec.join(', ')}`);
   }
   const summary = `rules proven ${result.proven}/${result.rules.length}, pending ${result.pending.length}`;
   if (result.missing.length > 0) {
@@ -130,7 +139,7 @@ export async function runRulesCoverage(options: RulesCoverageOptions, fs: RulesF
     await fs.writeText(options.outPath, renderReport(result, options.specPath));
     return outcomeOf(result, options.specPath);
   } catch (error: unknown) {
-    return { exitCode: 1, message: `rules-coverage failed: ${reasonOf(error)}` };
+    return failure(reasonOf(error));
   }
 }
 
@@ -145,7 +154,7 @@ export async function runFromArgs(argv: readonly string[], fs: RulesFileSystem):
   try {
     options = parseArgs(argv);
   } catch (error: unknown) {
-    return { exitCode: 1, message: `rules-coverage failed: ${reasonOf(error)}` };
+    return failure(reasonOf(error));
   }
   return runRulesCoverage(options, fs);
 }

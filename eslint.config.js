@@ -79,6 +79,10 @@ export default tseslint.config(
           ],
         },
       ],
+      'no-restricted-syntax': [
+        'error',
+        { selector: 'ImportExpression', message: 'Dynamic imports bypass the port boundary; depend on ports.' },
+      ],
     },
   },
 );

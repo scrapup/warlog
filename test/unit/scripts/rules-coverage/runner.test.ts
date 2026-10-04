@@ -45,6 +45,7 @@ function memoryFs(files: Record<string, string>): { fs: RulesFileSystem; store: 
   return { fs, store };
 }
 
+/** Default run options pointing at the in-memory fixtures. */
 const OPTIONS = { specPath: 'spec.md', reportsDir: 'r', outPath: 'out.md' };
 
 describe('parseArgs', () => {
@@ -84,9 +85,10 @@ describe('runRulesCoverage', () => {
   });
 
   it('exits 1 listing unproven rules', async () => {
-    const { fs } = memoryFs({ 'spec.md': FULL_SPEC, 'r/unit.json': report([]), 'allow.txt': ALLOW_ALL_BUT_WL01 });
+    const { fs, store } = memoryFs({ 'spec.md': FULL_SPEC, 'r/unit.json': report([]), 'allow.txt': ALLOW_ALL_BUT_WL01 });
     const outcome = await runRulesCoverage({ ...OPTIONS, allowMissingPath: 'allow.txt' }, fs);
     expect(outcome).toEqual({ exitCode: 1, message: 'rules proven 0/72, pending 71; unproven: WL-01' });
+    expect(store.get('out.md')).toContain('Proven: **0/72** · pending (allow-list): 71 · missing: 1');
   });
 
   it('fails closed when the specification lacks code-level rules', async () => {
