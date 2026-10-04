@@ -4,6 +4,7 @@
  */
 import { WarlogError } from '../errors/warlog-error.ts';
 import { compareCodeUnits } from '../security/compare.ts';
+import { commandWords } from './operation-definition.ts';
 import type { OperationDefinition } from './operation-definition.ts';
 
 /**
@@ -60,18 +61,23 @@ export class OperationRegistry {
   /**
    * Builds the registry.
    * @param definitions - Every operation.
-   * @throws {WarlogError} `INTERNAL` on a duplicate name or CLI path, or an invalid definition.
+   * @throws {WarlogError} `INTERNAL` on a duplicate name or CLI path, a top-level command named like a group, or an invalid definition.
    */
   constructor(definitions: readonly OperationDefinition[]) {
     const paths = new Set<string>();
     for (const def of definitions) {
       checkDefinition(def);
-      const path = `${def.group} ${def.action}`;
+      const path = commandWords(def).join(' ');
       if (this.byName.has(def.name) || paths.has(path)) {
         throw new WarlogError('INTERNAL', `duplicate operation ${def.name} (${path})`, { operation: def.name });
       }
       this.byName.set(def.name, def);
       paths.add(path);
+    }
+    const topLevel = definitions.filter((d) => d.action === '').map((d) => d.group);
+    const clash = topLevel.find((group) => definitions.some((d) => d.group === group && d.action !== ''));
+    if (clash !== undefined) {
+      throw new WarlogError('INTERNAL', `top-level command ${clash} is also an operation group`, { group: clash });
     }
   }
 

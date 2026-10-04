@@ -40,6 +40,12 @@ describe('warlog mcp from the packed tarball', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(productOperations().map((d) => d.name).sort());
   }, 30_000);
 
+  it('[WL-45] answers doctor from the index built at start', async () => {
+    const result = await mcp().client.callTool({ name: 'doctor', arguments: {} });
+    expect(result.isError).not.toBe(true);
+    expect(JSON.stringify(result.content)).toContain('healthy: true');
+  }, 30_000);
+
   it('[WL-40] answers an unknown tool with a stable error', async () => {
     const result = await mcp().client.callTool({ name: 'nope', arguments: {} });
     expect(result.isError).toBe(true);

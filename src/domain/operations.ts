@@ -1,10 +1,11 @@
 /**
  * The product operation registry content (WL-35): every operation exposed by both interfaces is
- * listed here. Domain groups add their definitions as they land (US-97 onwards).
+ * listed here. Domain groups add their definitions as they land.
  */
 import type { OperationDefinition } from '../core/mediator/operation-definition.ts';
 import type { FileSystem } from '../core/ports/file-system.port.ts';
 import type { Logger } from '../core/ports/logger.port.ts';
+import { doctorOperation } from './health/doctor.operation.ts';
 
 /** Ports the domain operations are built with (refined when the first domain group lands). */
 export interface DomainDeps {
@@ -22,5 +23,5 @@ export type OperationsFactory = (deps: DomainDeps) => OperationDefinition[];
  * @returns The registry content.
  */
 export function productOperations(): OperationDefinition[] {
-  return [];
+  return [doctorOperation()];
 }

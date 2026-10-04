@@ -207,6 +207,17 @@ describe('command line: exit codes and errors', () => {
   });
 });
 
+describe('command line: top-level commands', () => {
+  it('[WL-37] runs and documents an operation without action as `warlog <group>`', async () => {
+    const top: OperationDefinition = { ...fixtureOperation('fixture_value'), name: 'top_value', group: 'top', action: '' };
+    const ran = await run(['top', '--name', 'x'], undefined, [top]);
+    expect(ran).toMatchObject({ code: 0, out: 'x\n' });
+    const help = await run(['top', '--help'], undefined, [top]);
+    expect(help.out).toContain('Usage: warlog top [options]');
+    expect(help.out).toContain('(warlog top --file input.yaml)');
+  });
+});
+
 describe('command line: help, version and mcp', () => {
   it('[WL-37] shows help at root, group and operation level', async () => {
     const root = await run(['--help']);

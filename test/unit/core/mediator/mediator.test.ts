@@ -167,6 +167,10 @@ describe('OperationRegistry', () => {
     },
   );
 
+  it('[WL-35] rejects a top-level command named like an operation group', () => {
+    expect(() => new OperationRegistry([base, { ...base, name: 'top', action: '' }])).toThrow(expect.objectContaining({ code: 'INTERNAL', details: { group: base.group } }));
+  });
+
   it('accepts a schema made strict by the registry check', () => {
     expect(() => new OperationRegistry([{ ...base, name: 'loose', action: 'loose', input: z.object({ a: z.string() }), examples: [{ a: 'x' }] }])).not.toThrow();
   });

@@ -34,7 +34,7 @@ export interface OperationDefinition<S extends z.ZodObject = z.ZodObject> {
   readonly name: string;
   /** CLI group (e.g. `task`). */
   readonly group: string;
-  /** CLI action (e.g. `batch-update`). */
+  /** CLI action (e.g. `batch-update`); `''` for a top-level command (`warlog doctor`). */
   readonly action: string;
   /** Command or query. */
   readonly kind: OperationKind;
@@ -50,4 +50,13 @@ export interface OperationDefinition<S extends z.ZodObject = z.ZodObject> {
   readonly load: LoadMode;
   /** Handler. */
   readonly handler: OperationHandler<z.infer<S>>;
+}
+
+/**
+ * Command-line words of an operation.
+ * @param def - Operation definition.
+ * @returns `[group, action]`, or `[group]` for a top-level command.
+ */
+export function commandWords(def: Pick<OperationDefinition, 'group' | 'action'>): string[] {
+  return def.action === '' ? [def.group] : [def.group, def.action];
 }
