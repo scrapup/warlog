@@ -596,7 +596,7 @@ that must run in linear time (WL-48, SEC-21).
 ##### 2. Technical Specification
 
 - **2.1 Touch points:** `src/core/ports/{file-system,clock,id-generator,git-client,machine-id,env,logger,watcher}.port.ts`; `src/core/adapters/{node-file-system,system-clock,ulid-generator,process-env,stderr-json-logger,local-machine-id}.ts`; `test/support/fakes/*.ts` (in-memory FS, fixed clock, sequential IDs, recording logger); refactor `scripts/rules-coverage.ts` to the `FileSystem` port.
-- **2.2 Data:** `FileSystem`: `readFile`, `writeFileAtomic(path, data)` (temp in same dir + `fsync` + `rename`), `appendFile`, `readDir` (recursive option), `stat`, `mkdirp`, `rename`, `realpath`, `exists`, `remove`. `IdGenerator`: monotonic ULID. `MachineIdProvider`: reads/creates `~/.config/warlog/machine-id` (`<hostname>-<6 random base32>`), never inside a store. `Logger`: JSON lines to **stderr** only, levels via `WARLOG_LOG_LEVEL`.
+- **2.2 Data:** `FileSystem`: `readFile`, `writeFileAtomic(path, data)` (temp in same dir + `fsync` + `rename`), `appendFile`, `readDir` (recursive option), `stat`, `mkdirp`, `rename`, `realpath`, `exists`, `remove`. `IdGenerator`: monotonic ULID. `MachineIdProvider`: reads/creates `~/.config/warlog/machine-id` (`m-<8 random base32>`, no host name — plan amendment 1; `WARLOG_MACHINE_ID` overrides), never inside a store. `Logger`: JSON lines to **stderr** only, levels via `WARLOG_LOG_LEVEL`.
 - **2.3 Contract:** ports are TypeScript interfaces with JSDoc; adapters implement exactly one port each.
 - **2.4 Resilience:**
 

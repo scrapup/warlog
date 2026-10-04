@@ -1,6 +1,8 @@
 /**
- * {@link MachineIdProvider} storing the id in the local, never-synced configuration
- * directory (`$XDG_CONFIG_HOME/warlog/machine-id`, default `~/.config/warlog/machine-id`).
+ * {@link MachineIdProvider} storing a random id (`m-<8 base32>`, no host name: the id ends up
+ * in versioned `.warlog/` files) in the local, never-synced configuration directory
+ * (`$XDG_CONFIG_HOME/warlog/machine-id`, default `~/.config/warlog/machine-id`).
+ * `WARLOG_MACHINE_ID` overrides it explicitly.
  */
 import { isAbsolute, join } from 'node:path';
 import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
@@ -11,20 +13,6 @@ import { isLowerAlnum } from '../security/char-classes.ts';
 
 /** Crockford base32 alphabet (lower case) used for the random suffix. */
 const BASE32 = '0123456789abcdefghjkmnpqrstvwxyz';
-
-/**
- * Reduces a host name to `[a-z0-9-]`, at most 40 characters.
- * @param host - Raw host name.
- * @returns The sanitized name (`host` when nothing remains).
- */
-export function sanitizeHostName(host: string): string {
-  let out = '';
-  for (const ch of host.toLowerCase()) {
-    out += isLowerAlnum(ch) || ch === '-' ? ch : '-';
-  }
-  const trimmed = out.slice(0, 40);
-  return trimmed === '' ? 'host' : trimmed;
-}
 
 /**
  * Tells whether a stored machine id is well formed: `[a-z0-9-]{1,64}`.
@@ -39,7 +27,7 @@ export function isMachineId(id: string): boolean {
 export interface LocalMachineIdDeps {
   /** File system. */
   readonly fs: FileSystem;
-  /** Environment (home, `XDG_CONFIG_HOME`, host name). */
+  /** Environment (home, `XDG_CONFIG_HOME`, `WARLOG_MACHINE_ID`). */
   readonly env: Env;
   /** Random byte source. */
   readonly random: (count: number) => Uint8Array;
@@ -63,11 +51,19 @@ export class LocalMachineId implements MachineIdProvider {
   /**
    * Returns the machine id, creating it on first use.
    * @returns The machine id.
-   * @throws {WarlogError} `INTERNAL` when the file cannot be read or written.
+   * @throws {WarlogError} `INTERNAL` when the file cannot be read or written; `VALIDATION` on a malformed override.
    */
   async get(): Promise<string> {
     if (this.cached !== undefined) {
       return this.cached;
+    }
+    const override = this.deps.env.get('WARLOG_MACHINE_ID');
+    if (override !== undefined) {
+      if (!isMachineId(override)) {
+        throw new WarlogError('VALIDATION', 'WARLOG_MACHINE_ID must match [a-z0-9-]{1,64}', { field: 'WARLOG_MACHINE_ID' });
+      }
+      this.cached = override;
+      return override;
     }
     const xdg = this.deps.env.get('XDG_CONFIG_HOME');
     const configDir = xdg !== undefined && isAbsolute(xdg) ? xdg : join(this.deps.env.homeDir(), '.config');
@@ -106,8 +102,7 @@ export class LocalMachineId implements MachineIdProvider {
    * @throws {WarlogError} `INTERNAL` when the file cannot be written.
    */
   private async create(path: string): Promise<string> {
-    const suffix = [...this.deps.random(6)].map((b) => BASE32[b % 32]).join('');
-    const id = `${sanitizeHostName(this.deps.env.hostName())}-${suffix}`;
+    const id = `m-${[...this.deps.random(8)].map((b) => BASE32[b % 32]).join('')}`;
     try {
       await this.deps.fs.writeFileAtomic(path, `${id}\n`);
     } catch (error: unknown) {

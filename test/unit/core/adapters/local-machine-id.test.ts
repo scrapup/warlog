@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { LocalMachineId, isMachineId, sanitizeHostName } from '../../../../src/core/adapters/local-machine-id.ts';
+import { LocalMachineId, isMachineId } from '../../../../src/core/adapters/local-machine-id.ts';
 import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
 import { MemoryEnv } from '../../../support/fakes/simple-fakes.ts';
 
@@ -18,11 +18,11 @@ function provider(fs: MemoryFileSystem, vars: Record<string, string> = {}): Loca
 }
 
 describe('LocalMachineId', () => {
-  it('creates <host>-<6 base32> under ~/.config/warlog and caches it', async () => {
+  it('creates a random m-<8 base32> id without the host name under ~/.config/warlog and caches it', async () => {
     const fs = new MemoryFileSystem();
     const machine = provider(fs);
     const id = await machine.get();
-    expect(id).toBe('test-host-07enw3');
+    expect(id).toBe('m-07enw3ah');
     expect(fs.files.get(ID_PATH)).toBe(`${id}\n`);
     fs.files.clear();
     expect(await machine.get()).toBe(id);
@@ -40,7 +40,7 @@ describe('LocalMachineId', () => {
   });
 
   it('recreates an empty id file', async () => {
-    expect(await provider(new MemoryFileSystem({ [ID_PATH]: '  \n' })).get()).toBe('test-host-07enw3');
+    expect(await provider(new MemoryFileSystem({ [ID_PATH]: '  \n' })).get()).toBe('m-07enw3ah');
   });
 
   it('[WL-49] rejects a malformed stored id', async () => {
@@ -59,16 +59,18 @@ describe('LocalMachineId', () => {
     await expect(provider(fs).get()).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 
-  it.each([
-    ['My.Laptop_01', 'my-laptop-01'],
-    ['', 'host'],
-    ['a'.repeat(50), 'a'.repeat(40)],
-  ])('sanitizes host name %p', (raw, expected) => {
-    expect(sanitizeHostName(raw)).toBe(expected);
+  it('uses a valid WARLOG_MACHINE_ID override without touching the file', async () => {
+    const fs = new MemoryFileSystem();
+    expect(await provider(fs, { WARLOG_MACHINE_ID: 'ci-runner-1' }).get()).toBe('ci-runner-1');
+    expect(fs.files.size).toBe(0);
+  });
+
+  it('rejects a malformed WARLOG_MACHINE_ID', async () => {
+    await expect(provider(new MemoryFileSystem(), { WARLOG_MACHINE_ID: 'Bad/Id' }).get()).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
   it.each([
-    ['test-host-07enw3', true],
+    ['m-07enw3ah', true],
     ['', false],
     ['UPPER', false],
     ['a/b', false],
