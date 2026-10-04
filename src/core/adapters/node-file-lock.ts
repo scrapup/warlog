@@ -3,7 +3,7 @@
  * ownership token. Stale locks are broken atomically (rename to a unique name, then unlink) and
  * a release only removes a lock this holder still owns.
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
@@ -137,7 +137,7 @@ export async function acquireFileLock(path: string, options: FileLockOptions): P
     if (Date.now() > deadline) {
       throw new WarlogError('CONFLICT', `${basename(path)} is locked by another writer`, { reason: 'locked' });
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_MIN_MS + Math.floor(Math.random() * POLL_JITTER_MS)));
+    await new Promise((resolve) => setTimeout(resolve, POLL_MIN_MS + randomInt(POLL_JITTER_MS)));
   }
   return async () => {
     const owner = await fs.readFile(lockPath, 'utf8').catch(() => undefined);

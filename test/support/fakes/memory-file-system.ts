@@ -2,6 +2,7 @@
  * In-memory {@link FileSystem} fake for unit tests. Paths are normalized to `/`.
  */
 import { WarlogError } from '../../../src/core/errors/warlog-error.ts';
+import { compareCodeUnits } from '../../../src/core/security/compare.ts';
 import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../../../src/core/ports/file-system.port.ts';
 
 /**
@@ -106,7 +107,7 @@ export class MemoryFileSystem implements FileSystem {
         }
       }
     }
-    return [...out].sort();
+    return [...out].sort(compareCodeUnits);
   }
 
   /**

@@ -3,6 +3,7 @@
  * text in the body. The body is preserved byte for byte; keys are written in a stable order.
  */
 import { WarlogError } from '../errors/warlog-error.ts';
+import { compareCodeUnits } from '../security/compare.ts';
 import { hasMergeConflictMarkers } from '../security/merge-marker-detector.ts';
 import { MANAGED_FIELDS } from './entity-ref.ts';
 import { parseYaml, stringifyYaml } from './yaml-codec.ts';
@@ -81,7 +82,7 @@ export function parseFrontMatter(text: string, source: string): FrontMatterDocum
 export function orderKeys(data: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const keys = Object.keys(data).filter((k) => data[k] !== undefined);
   const leading = LEADING_KEYS.filter((k) => keys.includes(k));
-  const rest = keys.filter((k) => !LEADING_KEYS.includes(k)).sort();
+  const rest = keys.filter((k) => !LEADING_KEYS.includes(k)).sort(compareCodeUnits);
   return Object.fromEntries([...leading, ...rest].map((k) => [k, data[k]]));
 }
 

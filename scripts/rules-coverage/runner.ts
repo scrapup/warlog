@@ -9,6 +9,7 @@ import { parseJestReport } from './jest-report.ts';
 import type { RuleProof } from './jest-report.ts';
 import { extractSpecRuleIds } from './rule-ids.ts';
 import type { FileSystem } from '../../src/core/ports/file-system.port.ts';
+import { compareCodeUnits } from '../../src/core/security/compare.ts';
 
 /** Options of one run. */
 export interface RulesCoverageOptions {
@@ -77,7 +78,7 @@ export function parseArgs(argv: readonly string[]): RulesCoverageOptions {
  * @throws {Error} When the directory holds no report.
  */
 async function readProofs(fs: FileSystem, dir: string): Promise<RuleProof[]> {
-  const files = (await fs.readDir(dir)).filter((f) => f.endsWith('.json')).sort();
+  const files = (await fs.readDir(dir)).filter((f) => f.endsWith('.json')).sort(compareCodeUnits);
   if (files.length === 0) {
     throw new Error(`no Jest JSON report in ${dir}`);
   }
