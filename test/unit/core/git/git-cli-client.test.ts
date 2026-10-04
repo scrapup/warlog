@@ -12,8 +12,8 @@ let repo = '';
 let outside = '';
 
 beforeAll(() => {
-  repo = realpathSync(mkdtempSync(join(tmpdir(), 'warlog-git-')));
-  outside = realpathSync(mkdtempSync(join(tmpdir(), 'warlog-nogit-')));
+  repo = realpathSync.native(mkdtempSync(join(tmpdir(), 'warlog-git-')));
+  outside = realpathSync.native(mkdtempSync(join(tmpdir(), 'warlog-nogit-')));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
   execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:scrapup/warlog.git'], { cwd: repo });
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: repo });

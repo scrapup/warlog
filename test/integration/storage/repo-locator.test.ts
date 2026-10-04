@@ -35,7 +35,7 @@ function hash(path: string): string {
 }
 
 beforeAll(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'warlog-repo-')));
+  base = realpathSync.native(mkdtempSync(join(tmpdir(), 'warlog-repo-')));
   main = join(base, 'main');
   worktree = join(base, 'wt');
   execFileSync('git', ['init', '-q', '-b', 'main', main]);
