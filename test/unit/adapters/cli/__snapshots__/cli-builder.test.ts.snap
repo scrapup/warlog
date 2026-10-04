@@ -1,0 +1,29 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`command line: help, version and mcp [WL-37] shows help at root, group and operation level 1`] = `
+"Usage: warlog fixture note-create [options]
+
+Creates a note (in memory) and records activity.
+
+Parameters:
+  FLAG                           TYPE      REQUIRED  DEFAULT  DESCRIPTION
+  --title <value>                string    yes       -        Note title
+  --description <value>          string    no        -        Note body
+  --tags <value>                 string[]  no        -        Tags
+  (meta: --file / --json-input)  object    no        -        Structured metadata
+
+Options:
+  --file <path>        Read input from a YAML, JSON or Markdown file (\`-\` for standard input)
+  --json-input <json>  Read input from a JSON object (prefer --file - for sensitive values)
+  --validate           Validate the input only; nothing is written
+  --format <format>    Output format: table | yaml | json
+  --fields <list>      Comma-separated fields to keep in the output
+  -h, --help           Show this help
+
+Example input file (warlog fixture note-create --file input.yaml):
+  title: Deploy notes
+  description: Body
+  tags:
+    - ops
+"
+`;

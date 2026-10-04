@@ -25,7 +25,7 @@ function bin(): string {
   return installed.bin;
 }
 
-describe('warlog bin from the packed tarball', () => {
+describe('warlog command line from the packed tarball', () => {
   it.each([['--version'], ['-V']])('prints the package version for %s', (flag) => {
     const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
     const result = runNode([bin(), flag], { timeoutMs: 25_000 });
@@ -33,9 +33,26 @@ describe('warlog bin from the packed tarball', () => {
     expect(result.stdout.trim()).toBe(version);
   }, 30_000);
 
-  it('exits 1 on an unknown invocation', () => {
+  it('[WL-37] exits 1 with the root help when called without a command', () => {
     const result = runNode([bin()], { timeoutMs: 25_000 });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('command line not implemented yet');
+    expect(result.stderr).toContain('Usage: warlog');
+    expect(result.stderr).toContain('mcp');
+  }, 30_000);
+
+  it('[WL-37] shows the root help with exit 0', () => {
+    const result = runNode([bin(), '--help'], { timeoutMs: 25_000 });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Start the MCP server');
+  }, 30_000);
+
+  it.each([
+    [['nope'], "unknown command 'nope'"],
+    [['--bogus'], "unknown option '--bogus'"],
+  ])('[WL-39] exits 3 on %j with a stable validation error', (args, message) => {
+    const result = runNode([bin(), ...args], { timeoutMs: 25_000 });
+    expect(result.status).toBe(3);
+    expect(result.stderr).toMatch(/^VALIDATION: /);
+    expect(result.stderr).toContain(message);
   }, 30_000);
 });

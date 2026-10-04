@@ -1,0 +1,58 @@
+import { describe, expect, it } from '@jest/globals';
+import { executeOperation, formatError, toLoggedFailure } from '../../../../src/adapters/shared/execute-operation.ts';
+import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
+import { Presenter } from '../../../../src/core/presenter/presenter.ts';
+import { fixtureDeps } from '../../../support/fixture-deps.ts';
+
+/** A presenter that fails unexpectedly. */
+class BrokenPresenter extends Presenter {
+  /**
+   * Always fails.
+   * @returns Never.
+   * @throws {TypeError} Always.
+   */
+  override present(): string {
+    throw new TypeError('broken');
+  }
+}
+
+describe('shared call path', () => {
+  it('[WL-40] maps an unexpected rendering failure to INTERNAL', async () => {
+    const deps = fixtureDeps();
+    const outcome = await executeOperation({ ...deps, presenter: new BrokenPresenter() }, 'fixture_echo', { text: 'x' });
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'INTERNAL', message: 'internal error' } });
+    expect(deps.store.logger.events).toEqual([{ level: 'error', event: 'op.failed', fields: { op: 'fixture_echo', stage: 'adapter', error_code: 'UNEXPECTED', error_name: 'TypeError' } }]);
+  });
+
+  it('[WL-40] maps an unexpected rendering failure of a command to INTERNAL, not to a warning', async () => {
+    const outcome = await executeOperation({ ...fixtureDeps(), presenter: new BrokenPresenter() }, 'fixture_note_create', { title: 'T' });
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'INTERNAL' } });
+  });
+
+  it('logs stable failures raised outside the mediator at debug with the fields of their cause', () => {
+    const deps = fixtureDeps();
+    const cause = Object.assign(new Error('denied'), { code: 'EACCES' });
+    toLoggedFailure(deps, 'fixture_echo', new WarlogError('INVALID_FILE', 'cannot read input file x', undefined, { cause }));
+    expect(deps.store.logger.events).toEqual([
+      {
+        level: 'debug',
+        event: 'op.failed',
+        fields: { op: 'fixture_echo', stage: 'adapter', error_code: 'INVALID_FILE', error_name: 'WarlogError', cause: { error_code: 'UNEXPECTED', error_name: 'Error', sys_code: 'EACCES' } },
+      },
+    ]);
+  });
+
+  it('[WL-36] returns valid on a dry run and runs no handler', async () => {
+    expect(await executeOperation(fixtureDeps(), 'fixture_echo', { text: 'x' }, { dryRun: true })).toEqual({ ok: true, text: 'valid', warnings: [] });
+  });
+
+  it('[WL-40] redacts local paths of errors raised outside the mediator', async () => {
+    const outcome = await executeOperation(fixtureDeps(), '/home/alice/op', {});
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'VALIDATION', message: 'unknown operation ~/op' } });
+  });
+
+  it('formats errors with and without details', () => {
+    expect(formatError(new WarlogError('NOT_FOUND', 'gone'))).toBe('NOT_FOUND: gone');
+    expect(formatError(new WarlogError('CONFLICT', 'stale', { rev: 2 }))).toBe('CONFLICT: stale\nrev: 2');
+  });
+});

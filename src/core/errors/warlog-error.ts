@@ -43,3 +43,12 @@ export class WarlogError extends Error {
 export function isWarlogError(error: unknown, code: WarlogErrorCode): error is WarlogError {
   return error instanceof WarlogError && error.code === code;
 }
+
+/**
+ * Keeps a {@link WarlogError} as is; anything else becomes `INTERNAL` (no message leaks, cause kept).
+ * @param error - Any thrown value.
+ * @returns A stable error.
+ */
+export function toWarlogError(error: unknown): WarlogError {
+  return error instanceof WarlogError ? error : new WarlogError('INTERNAL', 'internal error', undefined, { cause: error });
+}
