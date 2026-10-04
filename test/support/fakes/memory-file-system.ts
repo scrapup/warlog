@@ -4,37 +4,31 @@
 import { WarlogError } from '../../../src/core/errors/warlog-error.ts';
 import { compareCodeUnits } from '../../../src/core/security/compare.ts';
 import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../../../src/core/ports/file-system.port.ts';
+import { PathMap, norm } from './path-map.ts';
+import { PathSet } from './path-set.ts';
 
-/**
- * Normalizes a path to forward slashes without a trailing slash.
- * @param path - Raw path.
- * @returns Normalized path.
- */
-export function norm(path: string): string {
-  const p = path.split('\\').join('/');
-  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
-}
+export { norm } from './path-map.ts';
 
 /** In-memory file system with optional failure injection. */
 export class MemoryFileSystem implements FileSystem {
   /** Files by normalized path. */
-  readonly files = new Map<string, string>();
+  readonly files = new PathMap<string>();
   /** Explicit directories. */
-  readonly dirs = new Set<string>();
+  readonly dirs = new PathSet();
   /** Symbolic links: link path → target path. */
-  readonly links = new Map<string, string>();
+  readonly links = new PathMap<string>();
   /** Held locks. */
-  readonly locks = new Set<string>();
+  readonly locks = new PathSet();
   /** Modification times by path. */
-  readonly mtimes = new Map<string, number>();
+  readonly mtimes = new PathMap<number>();
   /** Paths whose atomic write fails (simulated crash before rename). */
-  readonly failWrites = new Set<string>();
+  readonly failWrites = new PathSet();
   /** Paths whose append fails. */
-  readonly failAppends = new Set<string>();
+  readonly failAppends = new PathSet();
   /** Number of `readDir` calls (to assert point loading). */
   readDirCalls = 0;
   /** Paths whose reads fail with `EACCES`. */
-  failReads = new Set<string>();
+  failReads = new PathSet();
 
   /**
    * Seeds files.

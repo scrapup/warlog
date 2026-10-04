@@ -32,7 +32,18 @@ describe('NodeRecursiveWatcher', () => {
     const errors: Error[] = [];
     const stop = new NodeRecursiveWatcher().watch(join(tmpdir(), 'warlog-missing-root-xyz'), () => undefined, (e) => errors.push(e));
     await until(() => errors.length === 1);
+    expect(Reflect.get(errors[0] ?? {}, 'code')).toBe('ENOENT');
     stop();
+  });
+
+  it('reports a root that is a file through onError', async () => {
+    const dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'warlog-watch-file-')));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, 'f'), 'x');
+    const errors: Error[] = [];
+    new NodeRecursiveWatcher().watch(join(dir, 'f'), () => undefined, (e) => errors.push(e));
+    await until(() => errors.length === 1);
+    expect(Reflect.get(errors[0] ?? {}, 'code')).toBe('ENOTDIR');
   });
 
   it('reports changed files relative to the root until stopped', async () => {

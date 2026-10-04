@@ -78,7 +78,7 @@ describe('IndexBuilder', () => {
     expect(index.listVars((v) => v.projectId === P).map((v) => v.name)).toEqual(['owner']);
     expect(index.listVars((v) => v.projectId === undefined)).toMatchObject([{ name: 'ci.timeout', scope: 'repo' }]);
     expect(stats).toMatchObject({ files: 7, entries: 7, invalid: 0, conflictCopies: 0 });
-    expect(fs.files).toEqual(before);
+    expect(new Map(fs.files)).toEqual(before);
   });
 
   it('[WL-06] rebuilds the same view from the files on every start', async () => {

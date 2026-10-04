@@ -65,7 +65,7 @@ describe('doctor', () => {
       memories_due_for_review: NOT_CHECKED,
       stale_temp_files: [{ root: 'repo', path: `memories/.${M1}.md.tmp-1-old`, age_minutes: 61 }],
     });
-    expect(fs.files).toEqual(before);
+    expect(new Map(fs.files)).toEqual(before);
   });
 
   it('[WL-45] reports a healthy store', async () => {
