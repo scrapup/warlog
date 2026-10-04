@@ -5,10 +5,11 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFileSystem } from '../../../src/core/adapters/node-file-system.ts';
-import { ProcessEnv } from '../../../src/core/adapters/process-env.ts';
 import { GitCliClient } from '../../../src/core/git/git-cli-client.ts';
+import { RepoLocator } from '../../../src/core/git/repo-locator.ts';
 import { PathGuard } from '../../../src/core/security/path-guard.ts';
 import { StoreRootsResolver } from '../../../src/core/storage/store-roots.ts';
+import { MemoryEnv } from '../../support/fakes/simple-fakes.ts';
 
 let base = '';
 let main = '';
@@ -48,12 +49,15 @@ afterAll(() => {
 });
 
 /**
- * Builds a resolver over the real file system and git.
+ * Builds a resolver over the real file system and git, with an isolated global root (never the
+ * developer's ~/.warlog).
  * @returns The resolver.
  */
 function resolver(): StoreRootsResolver {
   const fs = new NodeFileSystem();
-  return new StoreRootsResolver({ fs, env: new ProcessEnv(), git: new GitCliClient(), guard: new PathGuard(fs) });
+  const git = new GitCliClient();
+  const env = new MemoryEnv({ WARLOG_DIR: join(base, 'global') }, base, base);
+  return new StoreRootsResolver({ fs, env, git, guard: new PathGuard(fs), locator: new RepoLocator(git) });
 }
 
 describe('store roots with real git', () => {

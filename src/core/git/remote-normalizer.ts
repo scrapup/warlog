@@ -1,6 +1,6 @@
 /**
  * Repository key from a remote URL (WL-02): string operations only (WL-48). Strips scheme,
- * credentials, port and `.git`, converts the scp form `host:path` to `host/path`, lower-cases
+ * credentials, port, query, fragment and `.git`, converts the scp form `host:path` to `host/path`, lower-cases
  * the host and joins segments with `__`.
  */
 import { isAlnum } from '../security/char-classes.ts';
@@ -54,11 +54,11 @@ function splitHost(rest: string, scp: boolean): HostPath {
 }
 
 /**
- * Replaces characters outside `[A-Za-z0-9._-]` by `-`.
+ * Replaces characters outside `[A-Za-z0-9._-]` by `-` (repository-key segments).
  * @param segment - Path segment.
  * @returns A safe segment.
  */
-function safeSegment(segment: string): string {
+export function safeKeySegment(segment: string): string {
   let out = '';
   for (const ch of segment) {
     out += isAlnum(ch) || ch === '.' || ch === '_' || ch === '-' ? ch : '-';
@@ -72,10 +72,12 @@ function safeSegment(segment: string): string {
  * @returns The key, e.g. `github.com__scrapup__warlog`.
  */
 export function normalizeRemote(url: string): string {
-  const { rest, scp } = stripSchemeAndUser(url.trim());
+  const cut = [url.indexOf('?'), url.indexOf('#')].filter((i) => i >= 0);
+  const bare = cut.length > 0 ? url.slice(0, Math.min(...cut)) : url;
+  const { rest, scp } = stripSchemeAndUser(bare.trim());
   const { host, path } = splitHost(rest, scp);
   const trimmedPath = path.endsWith('/') ? path.slice(0, -1) : path;
   const noGit = trimmedPath.endsWith('.git') ? trimmedPath.slice(0, -4) : trimmedPath;
   const segments = [host, ...noGit.split('/')].filter((s) => s !== '' && s !== '.' && s !== '..');
-  return segments.map(safeSegment).join('__');
+  return segments.map(safeKeySegment).join('__');
 }

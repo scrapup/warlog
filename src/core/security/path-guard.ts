@@ -2,20 +2,33 @@
  * Path confinement (WL-49): every path built from identifiers, names or scopes resolves
  * inside its root, symbolic links included.
  */
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 
 /** Characters never allowed inside one path segment. */
 const FORBIDDEN_SEGMENT_CHARS = ['/', '\\', ':', '%', '\0'];
 
+/** Windows device names, reserved with or without extension. */
+const RESERVED_WINDOWS_NAMES = new Set(['con', 'prn', 'aux', 'nul', ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((n) => [`com${n}`, `lpt${n}`])]);
+
 /**
- * Tells whether a segment is a plain file or directory name.
+ * Tells whether a segment is a plain file or directory name, portable to Windows.
  * @param segment - One path segment.
- * @returns `false` for empty, `.`, `..`, separators, drive letters, percent-encoding or NUL.
+ * @returns `false` for empty, `.`, `..`, separators, drive letters, percent-encoding, NUL,
+ *   Windows device names (`con`, `nul.yaml`, …) or a trailing dot or space.
  */
 export function isSafeSegment(segment: string): boolean {
-  return segment !== '' && segment !== '.' && segment !== '..' && !FORBIDDEN_SEGMENT_CHARS.some((ch) => segment.includes(ch));
+  const base = segment.split('.')[0]?.toLowerCase() ?? '';
+  return (
+    segment !== '' &&
+    segment !== '.' &&
+    segment !== '..' &&
+    !FORBIDDEN_SEGMENT_CHARS.some((ch) => segment.includes(ch)) &&
+    !RESERVED_WINDOWS_NAMES.has(base) &&
+    !segment.endsWith('.') &&
+    !segment.endsWith(' ')
+  );
 }
 
 /**
@@ -26,7 +39,7 @@ export function isSafeSegment(segment: string): boolean {
  */
 export function isInside(root: string, child: string): boolean {
   const rel = relative(root, child);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 /** Resolves paths confined to a root. */

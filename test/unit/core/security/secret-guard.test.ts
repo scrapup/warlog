@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { MAX_SECRET_SCAN_DEPTH, SecretGuard } from '../../../../src/core/security/secret-guard.ts';
-import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, elapsedMs } from '../../../support/timing.ts';
+import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, medianElapsedMs, scalingRatio } from '../../../support/timing.ts';
 
 /** Secret samples assembled at run time so no secret-looking literal is committed. */
 const SAMPLES: ReadonlyArray<readonly [string, string]> = [
@@ -31,20 +31,35 @@ describe('SecretGuard', () => {
     expect(new SecretGuard().scan(text)).toEqual([]);
   });
 
-  it('[WL-09] walks nested objects, arrays and keys and reports locations only', () => {
+  it('[WL-09] walks nested objects, arrays and keys and never reports the secret itself', () => {
     const secret = SAMPLES[0]?.[1] ?? '';
-    const findings = new SecretGuard().scan({ a: [1, true, null, { b: secret }], [secret]: 'x' });
+    const findings = new SecretGuard().scan({ a: [1, true, null, { b: secret }], [secret]: { nested: secret } });
     expect(findings).toEqual([
       { kind: 'github-token', path: '$.a[3].b' },
-      { kind: 'github-token', path: `$.${secret}` },
+      { kind: 'github-token', path: '$.<key#1>' },
+      { kind: 'github-token', path: '$.<key#1>.nested' },
     ]);
-    expect(JSON.stringify(findings.map((f) => f.kind))).not.toContain(secret);
+    expect(JSON.stringify(findings)).not.toContain(secret);
   });
 
-  it('[WL-09] rejects with SECRET_REJECTED listing kinds and locations', () => {
+  it('[WL-09] rejects with SECRET_REJECTED whose details never contain the secret', () => {
     const guard = new SecretGuard();
-    expect(() => guard.assertClean({ note: SAMPLES[6]?.[1] })).toThrow(expect.objectContaining({ code: 'SECRET_REJECTED' }));
-    expect(() => guard.assertClean({ note: 'clean' })).not.toThrow();
+    const secret = SAMPLES[6]?.[1] ?? '';
+    const act = (): unknown => {
+      try {
+        guard.assertClean({ note: secret, [secret]: 1 });
+      } catch (error: unknown) {
+        return error;
+      }
+      return undefined;
+    };
+    const error = act();
+    expect(error).toMatchObject({ code: 'SECRET_REJECTED' });
+    expect(JSON.stringify((error as { details: unknown }).details)).not.toContain(secret);
+  });
+
+  it('[WL-09] accepts clean values', () => {
+    expect(() => new SecretGuard().assertClean({ note: 'clean' })).not.toThrow();
   });
 
   it(`[SEC-23] fails closed beyond ${MAX_SECRET_SCAN_DEPTH} levels of nesting`, () => {
@@ -65,6 +80,11 @@ describe('SecretGuard', () => {
     ['repeated BEGIN headers', '-----BEGIN '.repeat(ADVERSARIAL_LENGTH / 11)],
   ])(`[SEC-22][SEC-21][WL-48] scans pathological input (%s) under ${ADVERSARIAL_BUDGET_MS} ms`, (_label, text) => {
     expect(text.length).toBeGreaterThanOrEqual(ADVERSARIAL_LENGTH - 40);
-    expect(elapsedMs(() => new SecretGuard().scan(text))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    expect(medianElapsedMs(() => new SecretGuard().scan(text))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+  });
+
+  it('[SEC-22][SEC-21] scales linearly (doubling the input at most triples the time)', () => {
+    const ratio = scalingRatio((n) => ['s', 'k-'].join('').repeat(n), (text) => new SecretGuard().scan(text), ADVERSARIAL_LENGTH);
+    expect(ratio).toBeLessThan(3);
   });
 });

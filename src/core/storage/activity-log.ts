@@ -2,6 +2,7 @@
  * Append-only, per-machine activity log (WL-04, WL-18, plan §3.6):
  * `<root>/activity/<machine-id>/<yyyy-mm-dd>.jsonl`. Two machines never write the same file.
  */
+import { errorFields } from '../errors/error-fields.ts';
 import type { Clock } from '../ports/clock.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
@@ -36,7 +37,7 @@ export interface ActivityInput {
   readonly summary: string;
   /** Whether the change used `force`. */
   readonly forced?: boolean;
-  /** Extra fields for specific actions (e.g. `command_observed`). */
+  /** Extra fields for specific actions (e.g. `command_observed`); never override the fields above. */
   readonly extra?: Readonly<Record<string, unknown>>;
 }
 
@@ -55,7 +56,7 @@ export interface ActivityLogDeps {
 }
 
 /** Warning returned when an activity record could not be written. */
-export const ACTIVITY_NOT_RECORDED = 'activity.not_recorded';
+export const ACTIVITY_NOT_RECORDED = 'activity.not_recorded' as const;
 
 /** Writes activity records. */
 export class ActivityLog {
@@ -71,22 +72,22 @@ export class ActivityLog {
   }
 
   /**
-   * Appends one record to the machine's file of the day. A failure never fails the operation:
+   * Appends one record to the machine's file of the day (UTC date). A failure never fails the operation:
    * it is logged and reported as a warning (plan §5.1).
    * @param root - Scope root (global or repository).
    * @param input - Record fields.
    * @returns `undefined` when written, or {@link ACTIVITY_NOT_RECORDED}.
    */
-  async append(root: string, input: ActivityInput): Promise<string | undefined> {
+  async append(root: string, input: ActivityInput): Promise<typeof ACTIVITY_NOT_RECORDED | undefined> {
     const now = this.deps.clock.now();
     try {
       const machine = await this.deps.machine.get();
       const path = await this.deps.guard.resolveInside(root, 'activity', machine, `${now.toISOString().slice(0, 10)}.jsonl`);
       const { extra, ...fields } = input;
-      await this.deps.fs.appendFile(path, `${JSON.stringify({ ts: now.toISOString(), machine, ...fields, ...extra })}\n`);
+      await this.deps.fs.appendFile(path, `${JSON.stringify({ ...extra, ...fields, ts: now.toISOString(), machine })}\n`);
       return undefined;
     } catch (error: unknown) {
-      this.deps.logger.log('warn', 'activity.append_failed', { action: input.action, entity_type: input.entity_type, error: String(error) });
+      this.deps.logger.log('warn', 'activity.append_failed', { action: input.action, entity_type: input.entity_type, ...errorFields(error) });
       return ACTIVITY_NOT_RECORDED;
     }
   }

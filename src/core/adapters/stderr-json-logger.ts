@@ -4,16 +4,20 @@
  */
 import type { LogLevel, Logger } from '../ports/logger.port.ts';
 
+/** Keys written by the logger itself; caller fields never override them. */
+const RESERVED = new Set(['ts', 'level', 'event']);
+
 /** Numeric order of levels. */
 const ORDER: Readonly<Record<LogLevel, number>> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 /**
- * Parses a level name, defaulting to `warn`.
+ * Parses a level name (case-insensitive), defaulting to `warn`.
  * @param value - Raw level (e.g. `WARLOG_LOG_LEVEL`).
  * @returns The level.
  */
 export function parseLogLevel(value: string | undefined): LogLevel {
-  return value === 'debug' || value === 'info' || value === 'warn' || value === 'error' ? value : 'warn';
+  const v = value?.toLowerCase();
+  return v === 'debug' || v === 'info' || v === 'warn' || v === 'error' ? v : 'warn';
 }
 
 /** Logger writing one JSON object per line to a sink (standard error by default). */
@@ -48,6 +52,14 @@ export class StderrJsonLogger implements Logger {
     if (ORDER[level] < ORDER[this.threshold]) {
       return;
     }
-    this.write(`${JSON.stringify({ ts: this.now().toISOString(), level, event, ...fields })}\n`);
+    const ts = this.now().toISOString();
+    let line: string;
+    try {
+      const extra = Object.fromEntries(Object.entries(fields).filter(([k]) => !RESERVED.has(k)));
+      line = JSON.stringify({ ts, level, event, ...extra });
+    } catch {
+      line = JSON.stringify({ ts, level, event, log_error: 'serialize_failed' });
+    }
+    this.write(`${line}\n`);
   }
 }

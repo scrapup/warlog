@@ -18,5 +18,5 @@ try {
   await repo.update(ref, { patch: { title: value } }, 1);
   process.stdout.write('ok');
 } catch (error: unknown) {
-  process.stdout.write(error instanceof WarlogError ? error.code : String(error));
+  process.stdout.write(error instanceof WarlogError ? `${error.code}:${String(error.details?.['reason'])}` : String(error));
 }

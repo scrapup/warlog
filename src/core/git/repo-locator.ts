@@ -4,7 +4,7 @@
  */
 import { basename, dirname } from 'node:path';
 import type { GitClient } from '../ports/git-client.port.ts';
-import { normalizeRemote } from './remote-normalizer.ts';
+import { normalizeRemote, safeKeySegment } from './remote-normalizer.ts';
 
 /** A located repository. */
 export interface LocatedRepo {
@@ -42,7 +42,7 @@ export class RepoLocator {
     const mainWorktree = basename(commonDir) === '.git' ? dirname(commonDir) : commonDir;
     const url = await this.remoteUrl(cwd);
     if (url === undefined) {
-      return { mainWorktree, key: `local__${basename(mainWorktree)}`, hasRemote: false };
+      return { mainWorktree, key: `local__${safeKeySegment(basename(mainWorktree))}`, hasRemote: false };
     }
     return { mainWorktree, key: normalizeRemote(url), hasRemote: true };
   }

@@ -4,6 +4,7 @@
  */
 import { WarlogError } from '../errors/warlog-error.ts';
 import { hasMergeConflictMarkers } from '../security/merge-marker-detector.ts';
+import { MANAGED_FIELDS } from './entity-ref.ts';
 import { parseYaml, stringifyYaml } from './yaml-codec.ts';
 
 /** A parsed entity file. */
@@ -14,8 +15,11 @@ export interface FrontMatterDocument {
   readonly body: string;
 }
 
-/** Keys written first, in this order; other keys follow alphabetically. */
-const LEADING_KEYS = ['id', 'type', 'rev', 'created_at', 'updated_at', 'machine'];
+/** Keys written first (the managed common fields, in order); other keys follow alphabetically. */
+const LEADING_KEYS = MANAGED_FIELDS;
+
+/** UTF-8 byte order mark. */
+const BOM = '\uFEFF';
 
 /** Offsets of the closing front-matter delimiter. */
 interface ClosingDelimiter {
@@ -53,7 +57,7 @@ function findClosing(text: string): ClosingDelimiter | undefined {
  * @throws {WarlogError} `INVALID_FILE` with `reason` `merge_conflict`, `front_matter` or `yaml`.
  */
 export function parseFrontMatter(text: string, source: string): FrontMatterDocument {
-  const content = text.startsWith('﻿') ? text.slice(1) : text;
+  const content = text.startsWith(BOM) ? text.slice(1) : text;
   if (hasMergeConflictMarkers(content)) {
     throw new WarlogError('INVALID_FILE', `${source}: merge conflict markers`, { reason: 'merge_conflict', file: source });
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { GlobMatcher, MAX_GLOB_LENGTH } from '../../../../src/core/security/glob-matcher.ts';
-import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, elapsedMs } from '../../../support/timing.ts';
+import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, medianElapsedMs, scalingRatio } from '../../../support/timing.ts';
 
 /** Equivalence cases (fixture protected by CHECKSUMS). */
 const CASES = JSON.parse(readFileSync('test/fixtures/security/glob-cases.json', 'utf8')) as Array<{
@@ -26,6 +26,12 @@ describe('GlobMatcher', () => {
     ['globstars vs deep path', '**/'.repeat(MAX_GLOB_LENGTH / 3), 'a/'.repeat(ADVERSARIAL_LENGTH / 2)],
     ['question marks', '?'.repeat(MAX_GLOB_LENGTH), 'x'.repeat(ADVERSARIAL_LENGTH)],
   ])(`[SEC-22][SEC-21][WL-48] matches pathological input (%s) under ${ADVERSARIAL_BUDGET_MS} ms`, (_label, pattern, path) => {
-    expect(elapsedMs(() => new GlobMatcher().matches(pattern, path))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    expect(medianElapsedMs(() => new GlobMatcher().matches(pattern, path))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+  });
+
+  it('[SEC-22][WL-48] scales linearly in the path length', () => {
+    const pattern = '*a'.repeat(32);
+    const ratio = scalingRatio((n) => 'a'.repeat(n) + 'b', (path) => new GlobMatcher().matches(pattern, path), ADVERSARIAL_LENGTH);
+    expect(ratio).toBeLessThan(3);
   });
 });

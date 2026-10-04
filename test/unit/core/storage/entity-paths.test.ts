@@ -34,6 +34,7 @@ describe('EntityPaths', () => {
     { type: 'questionnaire', id: '../aar', scope: 'global' },
     { type: 'task', id: X, scope: 'global', projectId: P },
     { type: 'template', id: X, scope: 'repo' },
+    { type: 'project', id: P, scope: 'repo', projectId: X },
   ])('[WL-49] rejects %o', async (ref) => {
     await expect(memoryStore().paths.pathFor(ref)).rejects.toMatchObject({ code: 'VALIDATION' });
   });

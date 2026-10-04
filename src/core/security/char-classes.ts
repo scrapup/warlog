@@ -12,6 +12,24 @@ export function isAlnum(ch: string): boolean {
 }
 
 /**
+ * Tells whether a character is an ASCII decimal digit.
+ * @param ch - One character.
+ * @returns `true` for `0-9`.
+ */
+export function isDigit(ch: string): boolean {
+  return ch >= '0' && ch <= '9';
+}
+
+/**
+ * Tells whether a character is a lower-case ASCII letter or digit.
+ * @param ch - One character.
+ * @returns `true` for `a-z`, `0-9`.
+ */
+export function isLowerAlnum(ch: string): boolean {
+  return (ch >= 'a' && ch <= 'z') || isDigit(ch);
+}
+
+/**
  * Tells whether a character is an upper-case letter or digit.
  * @param ch - One character.
  * @returns `true` for `A-Z`, `0-9`.

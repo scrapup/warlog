@@ -13,7 +13,7 @@ describe('isSafeSegment', () => {
     expect(isSafeSegment(s)).toBe(true);
   });
 
-  it.each(['', '.', '..', '../x', '..\\x', 'a/b', 'a\\b', 'C:', 'C:\\Windows', '%2e%2e', 'nul\0byte'])('[WL-49] rejects %p', (s) => {
+  it.each(['', '.', '..', '../x', '..\\x', 'a/b', 'a\\b', 'C:', 'C:\\Windows', '%2e%2e', 'nul\0byte', 'con', 'NUL.yaml', 'com1.md', 'lpt9', 'trailing.', 'trailing '])('[WL-49] rejects %p', (s) => {
     expect(isSafeSegment(s)).toBe(false);
   });
 });
@@ -24,6 +24,7 @@ describe('isInside', () => {
     expect(isInside(ROOT, join(ROOT, 'a', 'b'))).toBe(true);
     expect(isInside(ROOT, resolve('/store-other'))).toBe(false);
     expect(isInside(ROOT, resolve('/'))).toBe(false);
+    expect(isInside(ROOT, join(ROOT, '..foo'))).toBe(true);
   });
 });
 

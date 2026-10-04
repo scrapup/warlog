@@ -22,7 +22,11 @@ export interface ReadDirOptions {
 /** Releases an exclusive lock. */
 export type ReleaseLock = () => Promise<void>;
 
-/** File-system operations used by warlog. Paths are absolute; errors are {@link WarlogError}s. */
+/**
+ * File-system operations used by warlog. Paths should be absolute. The failures documented
+ * with `@throws` are {@link WarlogError}s; any other I/O error propagates unchanged and is
+ * mapped to `INTERNAL` by the error-mapping behavior.
+ */
 export interface FileSystem {
   /**
    * Reads a UTF-8 text file.
@@ -80,8 +84,9 @@ export interface FileSystem {
    */
   remove(path: string): Promise<void>;
   /**
-   * Acquires an exclusive lock file next to `path` (`<path>.lock`), waiting while another
-   * process holds it; a lock older than the stale threshold is broken.
+   * Acquires an exclusive, hidden lock file next to `path` (`.<name>.lock`), waiting while
+   * another process holds it; a lock older than the stale threshold is broken atomically. The
+   * release only removes the lock when this holder still owns it.
    * @param path - Path of the guarded file.
    * @returns A function releasing the lock.
    * @throws {WarlogError} `CONFLICT` when the lock cannot be acquired in time.

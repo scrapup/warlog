@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { join, resolve } from 'node:path';
+import { RepoLocator } from '../../../../src/core/git/repo-locator.ts';
 import { PathGuard } from '../../../../src/core/security/path-guard.ts';
 import { StoreRootsResolver } from '../../../../src/core/storage/store-roots.ts';
 import { FakeGitClient } from '../../../support/fakes/fake-git-client.ts';
@@ -21,7 +22,8 @@ const REPO: FakeGitState = { commonDir: join(MAIN, '.git'), remotes: { origin: '
  */
 function setup(git: FakeGitState, files: Record<string, string> = {}, vars: Record<string, string> = {}) {
   const fs = new MemoryFileSystem(files);
-  const resolver = new StoreRootsResolver({ fs, env: new MemoryEnv(vars, HOME), git: new FakeGitClient(git), guard: new PathGuard(fs) });
+  const fakeGit = new FakeGitClient(git);
+  const resolver = new StoreRootsResolver({ fs, env: new MemoryEnv(vars, HOME), git: fakeGit, guard: new PathGuard(fs), locator: new RepoLocator(fakeGit) });
   return { resolver, fs };
 }
 
@@ -56,11 +58,25 @@ describe('StoreRootsResolver', () => {
     expect(roots.warnings).toEqual([]);
   });
 
-  it('[WL-70] rejects an unknown storage mode as INVALID_FILE', async () => {
-    const files = { [modeFile(join(HOME, '.warlog'), KEY)]: 'value: cloud\n' };
+  it.each([
+    ['an unknown value', 'value: cloud\n'],
+    ['a non-mapping document', '- global\n'],
+  ])('[WL-70] rejects %s in warlog.storage as INVALID_FILE', async (_label, text) => {
+    const files = { [modeFile(join(HOME, '.warlog'), KEY)]: text };
     await expect(setup(REPO, files).resolver.resolve(MAIN)).rejects.toMatchObject({ code: 'INVALID_FILE' });
-    const notMapping = { [modeFile(join(HOME, '.warlog'), KEY)]: '- global\n' };
-    await expect(setup(REPO, notMapping).resolver.resolve(MAIN)).rejects.toMatchObject({ code: 'INVALID_FILE' });
+  });
+
+  it('[WL-01] rejects a relative WARLOG_DIR', async () => {
+    await expect(setup(REPO, {}, { WARLOG_DIR: 'relative/dir' }).resolver.resolve(MAIN)).rejects.toMatchObject({
+      code: 'VALIDATION',
+      details: { field: 'WARLOG_DIR' },
+    });
+  });
+
+  it('[WL-49] rejects an in-repository .warlog link leaving the working tree', async () => {
+    const { resolver, fs } = setup(REPO, { [resolve('/elsewhere/x.md')]: 'x', [join(MAIN, 'README.md')]: 'r' });
+    fs.links.set(join(MAIN, '.warlog').split('\\').join('/'), resolve('/elsewhere').split('\\').join('/'));
+    await expect(resolver.resolve(MAIN)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
   it('[WL-03] warns that a repository without remote is not portable in global mode only', async () => {
@@ -75,6 +91,10 @@ describe('StoreRootsResolver', () => {
   it('[WL-03] gives no repository scope outside a repository and flags a missing git', async () => {
     expect(await setup({}).resolver.resolve(MAIN)).toEqual({ global: join(HOME, '.warlog'), warnings: [] });
     expect((await setup({ available: false }).resolver.resolve(MAIN)).warnings).toEqual(['git.unavailable']);
+  });
+
+  it('[WL-03] keeps git missing and outside-repository answers apart', async () => {
+    expect((await setup({ available: true }).resolver.resolve(MAIN)).warnings).toEqual([]);
   });
 
   it('[WL-49] rejects an unsafe repository key', async () => {

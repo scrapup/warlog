@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFileSystem } from '../../../../src/core/adapters/node-file-system.ts';
 import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
+import { RecordingLogger } from '../../../support/fakes/simple-fakes.ts';
 
 let dir = '';
 
@@ -32,8 +33,8 @@ describe('NodeFileSystem reads', () => {
     await expect(fs.readFile(join(dir, 'missing.md'))).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('passes through errors other than ENOENT', async () => {
-    await expect(new NodeFileSystem().readFile(dir)).rejects.not.toBeInstanceOf(WarlogError);
+  it('passes through errors other than ENOENT unchanged', async () => {
+    await expect(new NodeFileSystem().readFile(dir)).rejects.toMatchObject({ code: 'EISDIR' });
   });
 
   it('lists directories flat and recursively with / separators, [] when missing', async () => {
@@ -84,17 +85,29 @@ describe('NodeFileSystem writes', () => {
     expect(readdirSync(dir)).toEqual(['c.md']);
   });
 
-  it('[WL-41] a temporary file left by a killed writer does not alter the target', async () => {
+  it('[WL-41] an orphan temporary file left by a killed writer neither blocks nor leaks into the next write', async () => {
     const target = join(dir, 'c.md');
     writeFileSync(target, 'previous');
     writeFileSync(join(dir, '.c.md.tmp-999-deadbeef'), 'partial');
-    expect(readFileSync(target, 'utf8')).toBe('previous');
+    const fs = new NodeFileSystem();
+    expect(await fs.readFile(target)).toBe('previous');
+    await fs.writeFileAtomic(target, 'next');
+    expect(await fs.readFile(target)).toBe('next');
+  });
+
+  it('[WL-41] removes the temporary file on failure and reports only the file name', async () => {
+    writeFileSync(join(dir, 'c.md'), 'ok');
+    const failing = new NodeFileSystem({ rename: async () => Promise.reject(sysError('ENOSPC')) });
+    await expect(failing.writeFileAtomic(join(dir, 'd.md'), 'data')).rejects.toMatchObject({ code: 'INTERNAL', details: { file: 'd.md' } });
+    expect(readdirSync(dir)).toEqual(['c.md']);
   });
 
   it('retries transient rename failures (Windows file locks)', async () => {
     let calls = 0;
     const { rename } = await import('node:fs/promises');
+    const logger = new RecordingLogger();
     const fs = new NodeFileSystem({
+      logger,
       renameBackoffMs: 1,
       rename: async (from, to) => {
         calls += 1;
@@ -107,6 +120,10 @@ describe('NodeFileSystem writes', () => {
     await fs.writeFileAtomic(join(dir, 'c.md'), 'ok');
     expect(calls).toBe(3);
     expect(readFileSync(join(dir, 'c.md'), 'utf8')).toBe('ok');
+    expect(logger.events.map((e) => e.fields)).toEqual([
+      { attempt: 1, sys_code: 'EPERM' },
+      { attempt: 2, sys_code: 'EPERM' },
+    ]);
   });
 
   it('gives up after the configured attempts', async () => {
@@ -142,30 +159,63 @@ describe('NodeFileSystem writes', () => {
 });
 
 describe('NodeFileSystem locks', () => {
-  it('serializes holders and releases the lock', async () => {
+  it('[WL-42] serializes holders: the second acquires only after the first releases', async () => {
     const fs = new NodeFileSystem({ lockTimeoutMs: 2_000 });
     const target = join(dir, 'task.md');
+    const order: string[] = [];
     const release = await fs.lock(target);
-    const second = fs.lock(target);
-    setTimeout(() => void release(), 30);
-    const releaseSecond = await second;
-    await releaseSecond();
+    const second = fs.lock(target).then((r) => {
+      order.push('acquired-2');
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    order.push('release-1');
+    await release();
+    await (await second)();
+    expect(order).toEqual(['release-1', 'acquired-2']);
     expect(readdirSync(dir)).toEqual([]);
   });
 
-  it('fails with CONFLICT when the lock stays busy', async () => {
+  it('[WL-42] uses a hidden lock file next to the entity', async () => {
+    const release = await new NodeFileSystem().lock(join(dir, 'task.md'));
+    expect(readdirSync(dir)).toEqual(['.task.md.lock']);
+    await release();
+  });
+
+  it('fails with CONFLICT (reason locked) when the lock stays busy', async () => {
     const fs = new NodeFileSystem({ lockTimeoutMs: 30 });
     const target = join(dir, 'task.md');
     await fs.lock(target);
-    await expect(fs.lock(target)).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(fs.lock(target)).rejects.toMatchObject({ code: 'CONFLICT', details: { reason: 'locked' } });
   });
 
-  it('breaks a stale lock', async () => {
+  it('breaks a stale lock atomically and logs it', async () => {
     const target = join(dir, 'task.md');
-    writeFileSync(`${target}.lock`, '1');
+    writeFileSync(join(dir, '.task.md.lock'), 'dead-holder');
     const old = new Date(Date.now() - 60_000);
-    utimesSync(`${target}.lock`, old, old);
-    const release = await new NodeFileSystem({ lockStaleMs: 1_000 }).lock(target);
+    utimesSync(join(dir, '.task.md.lock'), old, old);
+    const logger = new RecordingLogger();
+    const release = await new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 500, logger }).lock(target);
+    expect(readFileSync(join(dir, '.task.md.lock'), 'utf8')).not.toBe('dead-holder');
     await release();
+    expect(readdirSync(dir)).toEqual([]);
+    expect(logger.events.map((e) => e.event)).toEqual(['fs.lock_stale_broken']);
+  });
+
+  it('treats a lock with a future modification time (clock skew) as stale', async () => {
+    const target = join(dir, 'task.md');
+    writeFileSync(join(dir, '.task.md.lock'), 'skewed');
+    const future = new Date(Date.now() + 3_600_000);
+    utimesSync(join(dir, '.task.md.lock'), future, future);
+    const release = await new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 500 }).lock(target);
+    await release();
+  });
+
+  it('[WL-42] never removes a lock it no longer owns', async () => {
+    const target = join(dir, 'task.md');
+    const release = await new NodeFileSystem().lock(target);
+    writeFileSync(join(dir, '.task.md.lock'), 'another-holder');
+    await release();
+    expect(readFileSync(join(dir, '.task.md.lock'), 'utf8')).toBe('another-holder');
   });
 });

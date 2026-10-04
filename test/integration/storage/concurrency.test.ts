@@ -43,9 +43,10 @@ function update(value: string): Promise<string> {
 describe('two processes updating the same entity', () => {
   it('[WL-42][WL-41] exactly one succeeds and the other gets CONFLICT; no partial file remains', async () => {
     const results = await Promise.all([update('first'), update('second')]);
-    expect([...results].sort()).toEqual(['CONFLICT', 'ok']);
+    expect([...results].sort()).toEqual(['CONFLICT:stale_rev', 'ok']);
     const dir = join(root, 'projects', '01J00000000000000000000001', 'tasks');
     expect(readdirSync(dir)).toEqual(['01J00000000000000000000002.md']);
+    expect(readdirSync(root, { recursive: true }).some((f) => String(f).includes('.tmp-') || String(f).endsWith('.lock'))).toBe(false);
     const winner = results[0] === 'ok' ? 'first' : 'second';
     expect(readFileSync(join(dir, '01J00000000000000000000002.md'), 'utf8')).toContain(`title: ${winner}`);
   }, 60_000);

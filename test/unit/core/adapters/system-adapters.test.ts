@@ -9,6 +9,8 @@ import { FixedClock } from '../../../support/fakes/simple-fakes.ts';
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 afterEach(() => {
+  delete process.env['WARLOG_TEST_VAR'];
+  delete process.env['WARLOG_TEST_EMPTY'];
   jest.restoreAllMocks();
 });
 
@@ -34,6 +36,7 @@ describe('SystemClock', () => {
     const before = Date.now();
     const now = new SystemClock().now().getTime();
     expect(now).toBeGreaterThanOrEqual(before);
+    expect(now).toBeLessThanOrEqual(Date.now());
   });
 });
 
@@ -64,6 +67,17 @@ describe('StderrJsonLogger', () => {
     ]);
   });
 
+  it('never lets fields override reserved keys and survives unserializable fields', () => {
+    const lines: string[] = [];
+    const logger = new StderrJsonLogger('debug', (l) => lines.push(l), () => new Date('2026-10-03T00:00:00.000Z'));
+    logger.log('info', 'real', { level: 'error', event: 'forged', ts: 'x' });
+    logger.log('info', 'big', { n: 1n });
+    expect(lines).toEqual([
+      '{"ts":"2026-10-03T00:00:00.000Z","level":"info","event":"real"}\n',
+      '{"ts":"2026-10-03T00:00:00.000Z","level":"info","event":"big","log_error":"serialize_failed"}\n',
+    ]);
+  });
+
   it('writes to standard error by default, never to standard output', () => {
     const err = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const out = jest.spyOn(process.stdout, 'write');
@@ -77,6 +91,7 @@ describe('StderrJsonLogger', () => {
     ['info', 'info'],
     ['warn', 'warn'],
     ['error', 'error'],
+    ['DEBUG', 'debug'],
     ['verbose', 'warn'],
     [undefined, 'warn'],
   ])('parses level %p as %p', (raw, level) => {

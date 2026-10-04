@@ -3,8 +3,15 @@
  * (WL-72): warlog never stages, commits, pushes or edits ignore files.
  */
 import { execFile } from 'node:child_process';
+import type { ExecFileException } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { WarlogError } from '../errors/warlog-error.ts';
 import type { GitClient } from '../ports/git-client.port.ts';
+import type { Logger } from '../ports/logger.port.ts';
+import { resolveGitBinary } from './git-binary.ts';
+
+/** Maximum duration of one git command. */
+const GIT_TIMEOUT_MS = 10_000;
 
 /**
  * Asserts that a git invocation is read-only: `rev-parse …`, `remote`, `remote get-url <name>`
@@ -25,8 +32,40 @@ export function assertReadOnlyGit(args: readonly string[]): void {
   }
 }
 
+/**
+ * Tells whether a git failure is an expected answer (non-zero exit: not a repository, unknown
+ * remote) or a missing binary, as opposed to an operational failure (timeout, signal).
+ * @param error - execFile error.
+ * @returns `true` for expected outcomes.
+ */
+export function isExpectedGitFailure(error: ExecFileException): boolean {
+  return (typeof error.code === 'number' && error.killed !== true) || error.code === 'ENOENT';
+}
+
+/** Options of {@link GitCliClient}. */
+export interface GitCliClientOptions {
+  /** Optional logger (subcommand and codes only). */
+  readonly logger?: Logger;
+  /** Executable (defaults to the PATH-resolved git). */
+  readonly binary?: string;
+}
+
 /** Git client backed by the `git` executable (no shell). */
 export class GitCliClient implements GitClient {
+  /** Optional logger. */
+  private readonly logger: Logger | undefined;
+  /** Executable. */
+  private readonly binary: string;
+
+  /**
+   * Creates the client.
+   * @param options - Logger and executable.
+   */
+  constructor(options: GitCliClientOptions = {}) {
+    this.logger = options.logger;
+    this.binary = options.binary ?? resolveGitBinary(process.platform, process.env['PATH'], existsSync);
+  }
+
   /**
    * Returns the absolute common git directory.
    * @param cwd - Working directory.
@@ -80,20 +119,31 @@ export class GitCliClient implements GitClient {
    * @returns `true` when `git --version` succeeds.
    */
   async isAvailable(cwd: string): Promise<boolean> {
-    return (await this.run(cwd, ['--version'])) !== undefined;
+    return (await this.run(cwd, ['--version']).catch(() => undefined)) !== undefined;
   }
 
   /**
    * Runs a read-only git command.
    * @param cwd - Working directory.
    * @param args - Arguments (checked by {@link assertReadOnlyGit}).
-   * @returns Trimmed standard output, or `undefined` on failure (not a repository, git missing).
+   * @returns Trimmed standard output, or `undefined` for expected failures (not a repository, unknown remote, git missing).
+   * @throws {WarlogError} `INTERNAL` on operational failures (timeout, signal) instead of guessing "no repository".
    */
   private run(cwd: string, args: readonly string[]): Promise<string | undefined> {
     assertReadOnlyGit(args);
-    return new Promise((resolve) => {
-      execFile('git', [...args], { cwd, encoding: 'utf8', timeout: 10_000, windowsHide: true }, (error, stdout) => {
-        resolve(error === null ? stdout.trim() : undefined);
+    return new Promise((resolve, reject) => {
+      execFile(this.binary, [...args], { cwd, encoding: 'utf8', timeout: GIT_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
+        if (error === null) {
+          resolve(stdout.trim());
+          return;
+        }
+        const fields = { subcommand: args[0], exit_code: error.code, signal: error.signal ?? undefined, timed_out: error.killed === true };
+        this.logger?.log('debug', 'git.command_failed', fields);
+        if (isExpectedGitFailure(error)) {
+          resolve(undefined);
+        } else {
+          reject(new WarlogError('INTERNAL', `git ${args[0] ?? ''} failed`, { subcommand: args[0], timed_out: fields.timed_out }, { cause: error }));
+        }
       });
     });
   }

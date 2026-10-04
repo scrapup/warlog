@@ -42,3 +42,6 @@ export interface EntityRecord {
 
 /** Fields maintained by the repository; callers cannot set them through a patch. */
 export const MANAGED_FIELDS: readonly string[] = ['id', 'type', 'rev', 'created_at', 'updated_at', 'machine'];
+
+/** Soft-delete fields, set only by the dedicated delete and restore operations (WL-08). */
+export const DELETION_FIELDS: readonly string[] = ['deleted_at', 'deleted_by', 'delete_reason'];

@@ -2,10 +2,9 @@
  * Resolution of the store roots (WL-01, WL-70): the synchronized global root and the
  * repository root (`<main worktree>/.warlog` or `<global>/repos/<key>`).
  */
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
-import type { LocatedRepo } from '../git/repo-locator.ts';
-import { RepoLocator } from '../git/repo-locator.ts';
+import type { LocatedRepo, RepoLocator } from '../git/repo-locator.ts';
 import type { Env } from '../ports/env.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { GitClient } from '../ports/git-client.port.ts';
@@ -42,7 +41,7 @@ export interface StoreRoots {
 export const STORAGE_MODE_VAR = 'warlog.storage';
 
 /** Collaborators of {@link StoreRootsResolver}. */
-export interface StoreRootsDeps {
+export interface StoreRootsResolverDeps {
   /** File system. */
   readonly fs: FileSystem;
   /** Environment. */
@@ -51,41 +50,55 @@ export interface StoreRootsDeps {
   readonly git: GitClient;
   /** Path guard. */
   readonly guard: PathGuard;
+  /** Repository locator. */
+  readonly locator: RepoLocator;
 }
 
 /** Resolves the store roots of a working directory. */
 export class StoreRootsResolver {
   /** Collaborators. */
-  private readonly deps: StoreRootsDeps;
-  /** Repository locator. */
-  private readonly locator: RepoLocator;
+  private readonly deps: StoreRootsResolverDeps;
 
   /**
    * Creates the resolver.
    * @param deps - Collaborators.
    */
-  constructor(deps: StoreRootsDeps) {
+  constructor(deps: StoreRootsResolverDeps) {
     this.deps = deps;
-    this.locator = new RepoLocator(deps.git);
   }
 
   /**
    * Resolves the roots for `cwd`.
    * @param cwd - Working directory.
    * @returns The roots and warnings.
-   * @throws {WarlogError} `INVALID_FILE` when the storage-mode variable is malformed; `VALIDATION` on an unsafe key.
+   * @throws {WarlogError} `INVALID_FILE` when the storage-mode variable is malformed; `VALIDATION` on an unsafe key,
+   *   a relative `WARLOG_DIR` or a `.warlog` link leaving the working tree.
    */
   async resolve(cwd: string): Promise<StoreRoots> {
-    const global = this.deps.env.get('WARLOG_DIR') ?? join(this.deps.env.homeDir(), '.warlog');
-    const located = await this.locator.locate(cwd);
+    const global = this.globalRoot();
+    const located = await this.deps.locator.locate(cwd);
     if (located === undefined) {
       const gitOk = await this.deps.git.isAvailable(cwd);
       return { global, warnings: gitOk ? [] : ['git.unavailable'] };
     }
-    assertValid(isRepoKey(located.key), 'repository key', 'a safe repository key');
+    assertValid(isRepoKey(located.key), 'repo_key', 'a safe repository key');
     const mode = await this.readMode(global, located.key);
-    const root = mode === 'global' ? await this.deps.guard.resolveInside(global, 'repos', located.key) : join(located.mainWorktree, '.warlog');
+    const root =
+      mode === 'global'
+        ? await this.deps.guard.resolveInside(global, 'repos', located.key)
+        : await this.deps.guard.resolveInside(located.mainWorktree, '.warlog');
     return { global, repository: { root, key: located.key, mode, mainWorktree: located.mainWorktree }, warnings: this.warningsFor(located, mode) };
+  }
+
+  /**
+   * The global root: `$WARLOG_DIR` (absolute) or `~/.warlog`.
+   * @returns Absolute path.
+   * @throws {WarlogError} `VALIDATION` when `WARLOG_DIR` is relative.
+   */
+  private globalRoot(): string {
+    const configured = this.deps.env.get('WARLOG_DIR');
+    assertValid(configured === undefined || isAbsolute(configured), 'WARLOG_DIR', 'an absolute path');
+    return configured ?? join(this.deps.env.homeDir(), '.warlog');
   }
 
   /**

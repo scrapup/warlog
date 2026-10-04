@@ -6,7 +6,7 @@
 import { WarlogError } from '../errors/warlog-error.ts';
 import { isAlnum, isTokenChar, isUpperAlnum, isWord, runLength } from './char-classes.ts';
 
-/** One detected secret; the secret itself is never reported. */
+/** One detected secret; the secret itself is never reported (a secret object key is shown as `<key#N>`). */
 export interface SecretFinding {
   /** Kind of secret, e.g. `github-token`. */
   readonly kind: string;
@@ -113,10 +113,11 @@ function walk(value: unknown, path: string, depth: number): SecretFinding[] {
     return value.flatMap((item, i) => walk(item, `${path}[${i}]`, depth + 1));
   }
   if (typeof value === 'object' && value !== null) {
-    return Object.entries(value).flatMap(([key, item]) => [
-      ...scanString(key, `${path}.${key}`),
-      ...walk(item, `${path}.${key}`, depth + 1),
-    ]);
+    return Object.entries(value).flatMap(([key, item], index) => {
+      const redacted = `${path}.<key#${index}>`;
+      const keyFindings = scanString(key, redacted);
+      return [...keyFindings, ...walk(item, keyFindings.length > 0 ? redacted : `${path}.${key}`, depth + 1)];
+    });
   }
   return [];
 }

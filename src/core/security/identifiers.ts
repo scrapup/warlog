@@ -3,18 +3,10 @@
  * loops only (no regular expression); invalid input is rejected, never normalized (SEC-23).
  */
 import { WarlogError } from '../errors/warlog-error.ts';
+import { isAlnum, isLowerAlnum } from './char-classes.ts';
 
 /** Crockford base32 alphabet of ULIDs (upper case). */
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-
-/**
- * Tells whether a character is a lower-case letter or digit.
- * @param ch - One character.
- * @returns `true` for `a-z`, `0-9`.
- */
-function isLowerAlnum(ch: string): boolean {
-  return (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
-}
 
 /**
  * Tells whether a text is a ULID (26 Crockford base32 characters, first ≤ `7`).
@@ -51,7 +43,7 @@ export function isSlug(text: string): boolean {
  * @returns `true` for a valid key.
  */
 export function isRepoKey(text: string): boolean {
-  const charsOk = [...text].every((ch) => isLowerAlnum(ch.toLowerCase()) || ch === '_' || ch === '.' || ch === '-');
+  const charsOk = [...text].every((ch) => isAlnum(ch) || ch === '_' || ch === '.' || ch === '-');
   return text.length >= 1 && text.length <= 200 && charsOk && !text.includes('..') && !text.startsWith('.');
 }
 

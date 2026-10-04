@@ -6,6 +6,8 @@ import * as fs from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
 import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../ports/file-system.port.ts';
+import type { Logger } from '../ports/logger.port.ts';
+import { acquireFileLock, codeOf } from './node-file-lock.ts';
 
 /** Tunables of {@link NodeFileSystem} (defaults suit production; tests shorten them). */
 export interface NodeFileSystemOptions {
@@ -15,23 +17,16 @@ export interface NodeFileSystemOptions {
   readonly renameAttempts?: number;
   /** Delay between rename attempts in milliseconds (default 20). */
   readonly renameBackoffMs?: number;
-  /** Maximum wait for a lock in milliseconds (default 5 000). */
+  /** Maximum wait for a lock in milliseconds (default 8 000). */
   readonly lockTimeoutMs?: number;
-  /** Age after which a lock file is considered stale and broken (default 10 000). */
+  /** Age after which a lock file is considered stale and broken (default 4 000, below the timeout). */
   readonly lockStaleMs?: number;
+  /** Optional logger for retries and stale-lock events (codes only). */
+  readonly logger?: Logger;
 }
 
 /** Error codes of transient rename failures (Windows file locks). */
 const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
-
-/**
- * Returns the `code` of a Node system error.
- * @param error - Thrown value.
- * @returns The code, or `undefined`.
- */
-function codeOf(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined;
-}
 
 /**
  * Waits for a number of milliseconds.
@@ -54,6 +49,8 @@ export class NodeFileSystem implements FileSystem {
   private readonly lockTimeoutMs: number;
   /** Stale lock age. */
   private readonly lockStaleMs: number;
+  /** Optional logger. */
+  private readonly logger: Logger | undefined;
 
   /**
    * Creates the adapter.
@@ -63,8 +60,9 @@ export class NodeFileSystem implements FileSystem {
     this.renameFn = options.rename ?? fs.rename;
     this.renameAttempts = options.renameAttempts ?? 3;
     this.renameBackoffMs = options.renameBackoffMs ?? 20;
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 5_000;
-    this.lockStaleMs = options.lockStaleMs ?? 10_000;
+    this.lockTimeoutMs = options.lockTimeoutMs ?? 8_000;
+    this.lockStaleMs = options.lockStaleMs ?? 4_000;
+    this.logger = options.logger;
   }
 
   /**
@@ -91,18 +89,12 @@ export class NodeFileSystem implements FileSystem {
   async writeFileAtomic(path: string, data: string): Promise<void> {
     await fs.mkdir(dirname(path), { recursive: true });
     const temp = join(dirname(path), `.${basename(path)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`);
-    const handle = await fs.open(temp, 'wx');
     try {
-      await handle.writeFile(data, 'utf8');
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    try {
+      await this.writeTemp(temp, data);
       await this.renameWithRetry(temp, path);
     } catch (error: unknown) {
-      await fs.rm(temp, { force: true });
-      throw new WarlogError('INTERNAL', `cannot replace ${path}`, { path }, { cause: error });
+      await fs.rm(temp, { force: true }).catch(() => undefined);
+      throw new WarlogError('INTERNAL', `cannot replace ${basename(path)}`, { file: basename(path) }, { cause: error });
     }
   }
 
@@ -185,42 +177,29 @@ export class NodeFileSystem implements FileSystem {
   }
 
   /**
-   * Acquires `<path>.lock` exclusively.
+   * Acquires the hidden lock guarding `path`.
    * @param path - Guarded file path.
    * @returns The release function.
-   * @throws {WarlogError} `CONFLICT` when the lock stays busy beyond the timeout.
+   * @throws {WarlogError} `CONFLICT` (`reason: locked`) when the lock stays busy beyond the timeout.
    */
   async lock(path: string): Promise<ReleaseLock> {
-    const lockPath = `${path}.lock`;
-    await fs.mkdir(dirname(lockPath), { recursive: true });
-    const deadline = Date.now() + this.lockTimeoutMs;
-    while (!(await this.tryCreateLock(lockPath))) {
-      if (Date.now() > deadline) {
-        throw new WarlogError('CONFLICT', `${path} is locked by another writer`, { path });
-      }
-      await sleep(5 + Math.floor(Math.random() * 10));
-    }
-    return () => fs.rm(lockPath, { force: true });
+    const options = { timeoutMs: this.lockTimeoutMs, staleMs: this.lockStaleMs };
+    return acquireFileLock(path, this.logger === undefined ? options : { ...options, logger: this.logger });
   }
 
   /**
-   * Tries to create the lock file once, breaking it when stale.
-   * @param lockPath - Lock file path.
-   * @returns `true` when this process now owns the lock.
+   * Writes and syncs the temporary file.
+   * @param temp - Temporary path (created exclusively).
+   * @param data - Content.
+   * @returns A promise resolved once durable.
    */
-  private async tryCreateLock(lockPath: string): Promise<boolean> {
+  private async writeTemp(temp: string, data: string): Promise<void> {
+    const handle = await fs.open(temp, 'wx');
     try {
-      await fs.writeFile(lockPath, String(process.pid), { flag: 'wx' });
-      return true;
-    } catch (error: unknown) {
-      if (codeOf(error) !== 'EEXIST') {
-        throw error;
-      }
-      const info = await this.stat(lockPath);
-      if (info !== undefined && Date.now() - info.mtimeMs > this.lockStaleMs) {
-        await fs.rm(lockPath, { force: true });
-      }
-      return false;
+      await handle.writeFile(data, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
     }
   }
 
@@ -240,6 +219,7 @@ export class NodeFileSystem implements FileSystem {
         if (attempt >= this.renameAttempts || !TRANSIENT_RENAME.has(codeOf(error) ?? '')) {
           throw error;
         }
+        this.logger?.log('debug', 'fs.rename_retry', { attempt, sys_code: codeOf(error) });
         await sleep(this.renameBackoffMs);
       }
     }
@@ -252,6 +232,6 @@ export class NodeFileSystem implements FileSystem {
    * @returns The error to throw.
    */
   private mapMissing(error: unknown, path: string): unknown {
-    return codeOf(error) === 'ENOENT' ? new WarlogError('NOT_FOUND', `${path} not found`, { path }) : error;
+    return codeOf(error) === 'ENOENT' ? new WarlogError('NOT_FOUND', `${basename(path)} not found`, { file: basename(path) }) : error;
   }
 }

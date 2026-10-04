@@ -4,7 +4,7 @@
 import { WarlogError } from '../errors/warlog-error.ts';
 import { assertValid, isSlug, isUlid } from '../security/identifiers.ts';
 import type { PathGuard } from '../security/path-guard.ts';
-import type { EntityRef } from './entity-ref.ts';
+import type { EntityRef, Scope } from './entity-ref.ts';
 import type { StoreRoots } from './store-roots.ts';
 
 /**
@@ -15,12 +15,13 @@ import type { StoreRoots } from './store-roots.ts';
 function projectSegments(ref: EntityRef): string[] {
   switch (ref.type) {
     case 'project':
+      assertValid(ref.projectId === ref.id, 'project_id', 'equal to the project id');
       return ['project.md'];
     case 'comment':
       assertValid(ref.taskId !== undefined && isUlid(ref.taskId), 'task_id', 'a ULID');
       return ['comments', String(ref.taskId), `${ref.id}.md`];
     default:
-      return [`${ref.type === 'story' ? 'stories' : `${ref.type}s`}`, `${ref.id}.md`];
+      return [ref.type === 'story' ? 'stories' : `${ref.type}s`, `${ref.id}.md`];
   }
 }
 
@@ -66,7 +67,7 @@ export class EntityPaths {
    * @returns The root.
    * @throws {WarlogError} `NO_REPO_CONTEXT` for `repo` outside a repository.
    */
-  rootOf(scope: EntityRef['scope']): string {
+  rootOf(scope: Scope): string {
     if (scope === 'global') {
       return this.roots.global;
     }
@@ -83,7 +84,8 @@ export class EntityPaths {
    * @throws {WarlogError} `VALIDATION` on malformed ids or unsupported scope/type; `NO_REPO_CONTEXT` without repository.
    */
   async pathFor(ref: EntityRef): Promise<string> {
-    assertValid(ref.type === 'questionnaire' ? isSlug(ref.id) : isUlid(ref.id), 'id', ref.type === 'questionnaire' ? 'a slug' : 'a ULID');
+    const isQuestionnaire = ref.type === 'questionnaire';
+    assertValid(isQuestionnaire ? isSlug(ref.id) : isUlid(ref.id), 'id', isQuestionnaire ? 'a slug' : 'a ULID');
     const root = this.rootOf(ref.scope);
     return this.guard.resolveInside(root, ...this.segments(ref));
   }

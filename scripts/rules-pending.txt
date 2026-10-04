@@ -34,7 +34,7 @@ WL-39  # US-95
 WL-40  # US-95
 WL-44  # US-96
 WL-45  # US-96
-WL-47  # US-94
+WL-47  # US-97 (note_search) and US-99 (memory_recall)
 WL-57  # US-102
 WL-58  # US-102
 WL-59  # US-102

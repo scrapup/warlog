@@ -27,6 +27,11 @@ describe('RepoLocator', () => {
     expect(await new RepoLocator(git).locate(MAIN)).toEqual({ mainWorktree: MAIN, key: 'local__warlog', hasRemote: false });
   });
 
+  it('[WL-03] sanitizes the directory name of a local-only key', async () => {
+    const git = new FakeGitClient({ commonDir: join(resolve('/src/My Projeto (ção)'), '.git') });
+    expect((await new RepoLocator(git).locate(MAIN))?.key).toBe('local__My-Projeto----o-');
+  });
+
   it('[WL-03] returns undefined outside a repository', async () => {
     expect(await new RepoLocator(new FakeGitClient()).locate(MAIN)).toBeUndefined();
   });

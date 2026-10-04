@@ -3,17 +3,17 @@
  * atomic writes, optimistic concurrency by `rev` under a short exclusive lock. Timestamps are
  * recorded for sorting and history only, never for conflict detection.
  */
-import { WarlogError } from '../errors/warlog-error.ts';
+import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
 import type { Clock } from '../ports/clock.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
 import type { EntityPaths } from './entity-paths.ts';
 import type { EntityRecord, EntityRef } from './entity-ref.ts';
-import { MANAGED_FIELDS } from './entity-ref.ts';
+import { DELETION_FIELDS, MANAGED_FIELDS } from './entity-ref.ts';
 import { parseFrontMatter, stringifyFrontMatter } from './front-matter-codec.ts';
 
 /** Collaborators of {@link EntityFileRepository}. */
-export interface EntityRepositoryDeps {
+export interface EntityFileRepositoryDeps {
   /** File system. */
   readonly fs: FileSystem;
   /** Entity paths. */
@@ -26,31 +26,46 @@ export interface EntityRepositoryDeps {
 
 /** Changes applied by {@link EntityFileRepository.update}. */
 export interface EntityChange {
-  /** Fields to set (`undefined` removes a field); managed fields are ignored. */
+  /** Fields to set (`undefined` removes a field); managed and deletion fields are ignored. */
   readonly patch: Readonly<Record<string, unknown>>;
   /** New body (unchanged when omitted). */
   readonly body?: string;
 }
 
-/**
- * Removes managed fields from caller input.
- * @param fields - Caller fields.
- * @returns Fields without `id`, `type`, `rev`, dates and `machine`.
- */
-function unmanaged(fields: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(fields).filter(([k]) => !MANAGED_FIELDS.includes(k)));
+/** Who deletes an entity and why (WL-08). */
+export interface DeletionInfo {
+  /** Who deletes. */
+  readonly by: string;
+  /** Why. */
+  readonly reason: string;
 }
+
+/** Computes a change from the current record (runs under the lock, may throw). */
+type ChangeFn = (current: EntityRecord) => EntityChange;
+
+/**
+ * Removes fields callers cannot set through a patch.
+ * @param fields - Caller fields.
+ * @param protectedFields - Field names to drop.
+ * @returns The remaining fields.
+ */
+function without(fields: Readonly<Record<string, unknown>>, protectedFields: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).filter(([k]) => !protectedFields.includes(k)));
+}
+
+/** Fields a caller patch can never touch. */
+const PROTECTED = [...MANAGED_FIELDS, ...DELETION_FIELDS];
 
 /** Reads and writes entity files. */
 export class EntityFileRepository {
   /** Collaborators. */
-  private readonly deps: EntityRepositoryDeps;
+  private readonly deps: EntityFileRepositoryDeps;
 
   /**
    * Creates the repository.
    * @param deps - Collaborators.
    */
-  constructor(deps: EntityRepositoryDeps) {
+  constructor(deps: EntityFileRepositoryDeps) {
     this.deps = deps;
   }
 
@@ -58,15 +73,10 @@ export class EntityFileRepository {
    * Reads an entity.
    * @param ref - Entity reference.
    * @returns The record.
-   * @throws {WarlogError} `NOT_FOUND`; `INVALID_FILE` when malformed or when its id/type do not match.
+   * @throws {WarlogError} `NOT_FOUND`; `INVALID_FILE` when malformed or when its id, type or rev are invalid.
    */
   async read(ref: EntityRef): Promise<EntityRecord> {
-    const path = await this.deps.paths.pathFor(ref);
-    const doc = parseFrontMatter(await this.deps.fs.readFile(path), path);
-    if (doc.data['id'] !== ref.id || doc.data['type'] !== ref.type || typeof doc.data['rev'] !== 'number') {
-      throw new WarlogError('INVALID_FILE', `${path}: id, type or rev do not match the file location`, { reason: 'front_matter', file: path });
-    }
-    return doc;
+    return this.readAt(await this.deps.paths.pathFor(ref), ref);
   }
 
   /**
@@ -75,16 +85,24 @@ export class EntityFileRepository {
    * @param fields - Entity fields.
    * @param body - Markdown body.
    * @returns The stored record.
-   * @throws {WarlogError} `CONFLICT` when the entity already exists.
+   * @throws {WarlogError} `CONFLICT` when the entity already exists; `VALIDATION` when the content would be unreadable.
    */
   async create(ref: EntityRef, fields: Readonly<Record<string, unknown>>, body = ''): Promise<EntityRecord> {
     const path = await this.deps.paths.pathFor(ref);
     return this.locked(path, async () => {
       if ((await this.deps.fs.stat(path)) !== undefined) {
-        throw new WarlogError('CONFLICT', `${ref.type} ${ref.id} already exists`, { id: ref.id });
+        throw new WarlogError('CONFLICT', `${ref.type} ${ref.id} already exists`, { id: ref.id, reason: 'exists' });
       }
       const now = this.deps.clock.now().toISOString();
-      const data = { ...unmanaged(fields), id: ref.id, type: ref.type, rev: 1, created_at: now, updated_at: now, machine: await this.deps.machine.get() };
+      const data = {
+        ...without(fields, PROTECTED),
+        id: ref.id,
+        type: ref.type,
+        rev: 1,
+        created_at: now,
+        updated_at: now,
+        machine: await this.deps.machine.get(),
+      };
       return this.write(path, { data, body });
     });
   }
@@ -95,43 +113,28 @@ export class EntityFileRepository {
    * @param change - Patch and optional body.
    * @param expectedRev - Revision the change was based on.
    * @returns The stored record (`rev` incremented).
-   * @throws {WarlogError} `CONFLICT` with the current state when `expectedRev` is stale; `NOT_FOUND`.
+   * @throws {WarlogError} `CONFLICT` (`reason: stale_rev`, current state in details) when `expectedRev` is stale; `NOT_FOUND`.
    */
   async update(ref: EntityRef, change: EntityChange, expectedRev: number): Promise<EntityRecord> {
-    const path = await this.deps.paths.pathFor(ref);
-    return this.locked(path, async () => {
-      const current = await this.read(ref);
-      const rev = Number(current.data['rev']);
-      if (rev !== expectedRev) {
-        throw new WarlogError('CONFLICT', `${ref.type} ${ref.id} changed since rev ${expectedRev}; re-read and re-apply`, { current: current.data });
-      }
-      const data = {
-        ...current.data,
-        ...unmanaged(change.patch),
-        rev: rev + 1,
-        updated_at: this.deps.clock.now().toISOString(),
-        machine: await this.deps.machine.get(),
-      };
-      return this.write(path, { data, body: change.body ?? current.body });
-    });
+    const safe: EntityChange = { ...change, patch: without(change.patch, PROTECTED) };
+    return this.mutate(ref, expectedRev, () => safe);
   }
 
   /**
    * Soft-deletes an entity (WL-08).
    * @param ref - Entity reference.
    * @param expectedRev - Current revision.
-   * @param by - Who deletes.
-   * @param reason - Why.
+   * @param deletion - Who deletes and why.
    * @returns The stored record.
    * @throws {WarlogError} `VALIDATION` when already deleted; `CONFLICT`; `NOT_FOUND`.
    */
-  async softDelete(ref: EntityRef, expectedRev: number, by: string, reason: string): Promise<EntityRecord> {
-    const current = await this.read(ref);
-    if (current.data['deleted_at'] !== undefined) {
-      throw new WarlogError('VALIDATION', `${ref.type} ${ref.id} is already deleted`, { id: ref.id });
-    }
-    const patch = { deleted_at: this.deps.clock.now().toISOString(), deleted_by: by, delete_reason: reason };
-    return this.update(ref, { patch }, expectedRev);
+  async softDelete(ref: EntityRef, expectedRev: number, deletion: DeletionInfo): Promise<EntityRecord> {
+    return this.mutate(ref, expectedRev, (current) => {
+      if (current.data['deleted_at'] !== undefined) {
+        throw new WarlogError('VALIDATION', `${ref.type} ${ref.id} is already deleted`, { id: ref.id });
+      }
+      return { patch: { deleted_at: this.deps.clock.now().toISOString(), deleted_by: deletion.by, delete_reason: deletion.reason } };
+    });
   }
 
   /**
@@ -142,15 +145,64 @@ export class EntityFileRepository {
    * @throws {WarlogError} `VALIDATION` when not deleted; `CONFLICT`; `NOT_FOUND`.
    */
   async restore(ref: EntityRef, expectedRev: number): Promise<EntityRecord> {
-    const current = await this.read(ref);
-    if (current.data['deleted_at'] === undefined) {
-      throw new WarlogError('VALIDATION', `${ref.type} ${ref.id} is not deleted`, { id: ref.id });
-    }
-    return this.update(ref, { patch: { deleted_at: undefined, deleted_by: undefined, delete_reason: undefined } }, expectedRev);
+    return this.mutate(ref, expectedRev, (current) => {
+      if (current.data['deleted_at'] === undefined) {
+        throw new WarlogError('VALIDATION', `${ref.type} ${ref.id} is not deleted`, { id: ref.id });
+      }
+      return { patch: Object.fromEntries(DELETION_FIELDS.map((f) => [f, undefined])) };
+    });
   }
 
   /**
-   * Runs a critical section under the entity's lock.
+   * Reads, checks the revision, applies a change and writes, all under the entity's lock.
+   * @param ref - Entity reference.
+   * @param expectedRev - Revision the change was based on.
+   * @param changeFn - Computes the change from the current record (may throw).
+   * @returns The stored record.
+   * @throws {WarlogError} `CONFLICT` with the current state when `expectedRev` is stale.
+   */
+  private async mutate(ref: EntityRef, expectedRev: number, changeFn: ChangeFn): Promise<EntityRecord> {
+    const path = await this.deps.paths.pathFor(ref);
+    return this.locked(path, async () => {
+      const current = await this.readAt(path, ref);
+      const rev = Number(current.data['rev']);
+      if (rev !== expectedRev) {
+        throw new WarlogError('CONFLICT', `${ref.type} ${ref.id} changed since rev ${expectedRev}; re-read and re-apply`, {
+          reason: 'stale_rev',
+          current: current.data,
+        });
+      }
+      const change = changeFn(current);
+      const data = {
+        ...current.data,
+        ...change.patch,
+        rev: rev + 1,
+        updated_at: this.deps.clock.now().toISOString(),
+        machine: await this.deps.machine.get(),
+      };
+      return this.write(path, { data, body: change.body ?? current.body });
+    });
+  }
+
+  /**
+   * Reads and checks an entity file.
+   * @param path - Entity file path.
+   * @param ref - Expected reference.
+   * @returns The record.
+   * @throws {WarlogError} `INVALID_FILE` when id, type or rev are invalid.
+   */
+  private async readAt(path: string, ref: EntityRef): Promise<EntityRecord> {
+    const doc = parseFrontMatter(await this.deps.fs.readFile(path), path);
+    const rev = doc.data['rev'];
+    const revOk = typeof rev === 'number' && Number.isSafeInteger(rev) && rev >= 1;
+    if (doc.data['id'] !== ref.id || doc.data['type'] !== ref.type || !revOk) {
+      throw new WarlogError('INVALID_FILE', `${ref.type} ${ref.id}: id, type or rev are invalid`, { reason: 'front_matter', id: ref.id });
+    }
+    return doc;
+  }
+
+  /**
+   * Runs a critical section under the entity's lock; a failing release never masks the outcome.
    * @param path - Entity file path.
    * @param section - Work to do.
    * @returns The section's result.
@@ -160,19 +212,32 @@ export class EntityFileRepository {
     try {
       return await section();
     } finally {
-      await release();
+      await release().catch(() => undefined);
     }
   }
 
   /**
-   * Writes a record atomically.
+   * Validates then writes a record atomically: content that could not be read back (e.g. a body
+   * with merge-conflict markers) is rejected before anything is written.
    * @param path - Entity file path.
    * @param record - Record to write.
-   * @returns The record as written (undefined fields dropped).
+   * @returns The record as stored (undefined fields dropped).
+   * @throws {WarlogError} `VALIDATION` when the content would be unreadable.
    */
   private async write(path: string, record: EntityRecord): Promise<EntityRecord> {
     const text = stringifyFrontMatter(record);
+    let stored: EntityRecord;
+    try {
+      stored = parseFrontMatter(text, path);
+    } catch (error: unknown) {
+      if (isWarlogError(error, 'INVALID_FILE')) {
+        throw new WarlogError('VALIDATION', 'content would make the file unreadable (e.g. merge-conflict markers in the body)', {
+          reason: error.details?.['reason'],
+        });
+      }
+      throw error;
+    }
     await this.deps.fs.writeFileAtomic(path, text);
-    return parseFrontMatter(text, path);
+    return stored;
   }
 }
