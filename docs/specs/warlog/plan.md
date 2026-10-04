@@ -1,7 +1,8 @@
 # Technical Plan: warlog
 
 > SDD Phase 2 — the How. Pre-requisite: [`spec.md`](spec.md) (Approved 2026-10-03, amendments 1–2 approved).
-> Status: **Approved** (2026-10-03) — Validator.
+> Status: **Approved** (2026-10-03) — Validator. Amendment 1 (2026-10-04, Validator): machine id is random
+> (`m-<8 base32>`), never derived from the host name, because it is written to versioned `.warlog/` files.
 > Rule IDs `WL-xx` / `SEC-xx` / `P-xx` refer to the spec.
 
 ## 1. Architecture Overview
@@ -104,7 +105,7 @@ $WARLOG_DIR/                              # default ~/.warlog (WL-01)
   templates/<ulid>.md
   activity/<machine-id>/<yyyy-mm-dd>.jsonl  # append-only, per machine (WL-04, WL-18)
 ~/.config/warlog/                         # local, never synced
-  machine-id                              # <hostname>-<random 6>, created once
+  machine-id                              # m-<random 8 base32>, created once (no host name; WARLOG_MACHINE_ID overrides)
   config.yaml                             # optional: dir, log level
 ```
 

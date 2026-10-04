@@ -22,8 +22,12 @@ events; semantic search; staging/committing/pushing `.warlog/` changes.
 Package scaffold and quality gates (US-93): `src/bin/warlog.ts` (prints `--version` only),
 `eslint.config.js`, `jest.config.ts` (projects `unit`, `integration`, `e2e-cli`, `e2e-mcp`,
 `bench`), `scripts/rules-coverage/**` (rule proof check) and `scripts/verify-local.ts`; CI job
-`verify` on Linux, macOS and Windows. Domain code arrives from US-94 on; document the real
-structure here as it lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
+`verify` on Linux, macOS and Windows. Core storage foundation (US-94): `src/core/errors` (`WarlogError`), `src/core/ports` (side-effect
+interfaces), `src/core/adapters` (Node implementations), `src/core/security` (linear matchers,
+identifier validation, `PathGuard`), `src/core/git` (read-only `GitCliClient`, repository locator),
+`src/core/storage` (YAML/front-matter codecs, store roots, entity paths, `EntityFileRepository`,
+`ActivityLog`). Test doubles live in `test/support/fakes`. Document the real structure here as it
+lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.
 
 **Source conventions:** relative imports use the `.ts` extension (rewritten to `.js` on build);

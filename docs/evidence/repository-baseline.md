@@ -52,6 +52,7 @@ None.
 | WL-76 | `head -1 README*.md`; `grep -c '^## '` | nav line first in EN/PT/JA; 8 sections each; `CLAUDE.md`, `CONTRIBUTING.md` present | 2026-10-04 |
 | P-03, SEC-27 | `gh pr checks 3` then `main-integrity` update | `verify (ubuntu-latest)`, `verify (macos-latest)`, `verify (windows-latest)` reported pass on PR #3 head, then added to `required_status_checks` (with `validate`, `dependency-review`) | 2026-10-04 |
 | P-03 | Probe PR #5 (undocumented method in `src/core/probe.ts`), closed unmerged | `verify` **fail** on the 3 OSes: `3:6 error Missing JSDoc comment jsdoc/require-jsdoc` | 2026-10-04 |
+| SEC-19 | `gh api repos/scrapup/warlog/code-scanning/default-setup` after PR #3 | `configured`, languages `actions`, `javascript-typescript`; first JS/TS analysis 0 results | 2026-10-04 |
 
 ## Known open items
 
