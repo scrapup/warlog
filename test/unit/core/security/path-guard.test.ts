@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { NodeFileSystem } from '../../../../src/core/adapters/node-file-system.ts';
 import { PathGuard, isInside, isSafeSegment } from '../../../../src/core/security/path-guard.ts';
-import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
+import { MemoryFileSystem, norm } from '../../../support/fakes/memory-file-system.ts';
 
 const ROOT = resolve('/store');
 
@@ -46,9 +46,9 @@ describe('PathGuard (in memory)', () => {
   );
 
   it('[WL-49] rejects a symbolic link pointing outside the root', async () => {
-    const fs = new MemoryFileSystem({ '/outside/secret.md': 'x', '/store/keep.md': 'y' });
-    fs.links.set('/store/evil', '/outside');
-    await expect(new PathGuard(fs).resolveInside('/store', 'evil', 'secret.md')).rejects.toMatchObject({
+    const fs = new MemoryFileSystem({ [resolve('/outside/secret.md')]: 'x', [resolve('/store/keep.md')]: 'y' });
+    fs.links.set(norm(resolve('/store/evil')), norm(resolve('/outside')));
+    await expect(new PathGuard(fs).resolveInside(resolve('/store'), 'evil', 'secret.md')).rejects.toMatchObject({
       code: 'VALIDATION',
       message: 'path escapes its root through a symbolic link',
     });

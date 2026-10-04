@@ -48,13 +48,13 @@ describe('NodeFileSystem reads', () => {
     await expect(fs.readDir(join(dir, 'file'))).rejects.toMatchObject({ code: 'ENOTDIR' });
   });
 
-  it('stats files and directories, undefined when missing, rethrows other errors', async () => {
+  it('stats files and directories, undefined when missing on every platform', async () => {
     writeFileSync(join(dir, 'f'), 'abc');
     const fs = new NodeFileSystem();
     expect(await fs.stat(join(dir, 'f'))).toMatchObject({ isDirectory: false, size: 3 });
     expect(await fs.stat(dir)).toMatchObject({ isDirectory: true });
     expect(await fs.stat(join(dir, 'missing'))).toBeUndefined();
-    await expect(fs.stat(join(dir, 'f', 'child'))).rejects.toMatchObject({ code: 'ENOTDIR' });
+    expect(await fs.stat(join(dir, 'f', 'child'))).toBeUndefined();
   });
 
   it('resolves symbolic links and maps a missing path to NOT_FOUND', async () => {

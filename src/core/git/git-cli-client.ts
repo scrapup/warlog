@@ -5,6 +5,7 @@
 import { execFile } from 'node:child_process';
 import type { ExecFileException } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
 import type { GitClient } from '../ports/git-client.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
@@ -42,6 +43,15 @@ export function isExpectedGitFailure(error: ExecFileException): boolean {
   return (typeof error.code === 'number' && error.killed !== true) || error.code === 'ENOENT';
 }
 
+/**
+ * Converts a path printed by git (forward slashes on Windows) to the platform form.
+ * @param path - Path from git output.
+ * @returns The resolved platform path, or `undefined`.
+ */
+function toPlatformPath(path: string | undefined): string | undefined {
+  return path === undefined ? undefined : resolve(path);
+}
+
 /** Options of {@link GitCliClient}. */
 export interface GitCliClientOptions {
   /** Optional logger (subcommand and codes only). */
@@ -72,7 +82,7 @@ export class GitCliClient implements GitClient {
    * @returns The common dir or `undefined`.
    */
   async commonDir(cwd: string): Promise<string | undefined> {
-    return this.run(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    return toPlatformPath(await this.run(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']));
   }
 
   /**
@@ -81,7 +91,7 @@ export class GitCliClient implements GitClient {
    * @returns The top level or `undefined`.
    */
   async topLevel(cwd: string): Promise<string | undefined> {
-    return this.run(cwd, ['rev-parse', '--show-toplevel']);
+    return toPlatformPath(await this.run(cwd, ['rev-parse', '--show-toplevel']));
   }
 
   /**

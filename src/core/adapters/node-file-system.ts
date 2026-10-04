@@ -139,14 +139,14 @@ export class NodeFileSystem implements FileSystem {
   /**
    * Reads entry metadata.
    * @param path - Entry path.
-   * @returns Metadata or `undefined` when missing.
+   * @returns Metadata or `undefined` when missing (including below a file: ENOTDIR).
    */
   async stat(path: string): Promise<FileStat | undefined> {
     try {
       const s = await fs.stat(path);
       return { isDirectory: s.isDirectory(), size: s.size, mtimeMs: s.mtimeMs };
     } catch (error: unknown) {
-      if (codeOf(error) === 'ENOENT') {
+      if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
         return undefined;
       }
       throw error;

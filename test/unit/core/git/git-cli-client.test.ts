@@ -54,8 +54,8 @@ describe('GitCliClient', () => {
 
   it('reads repository facts', async () => {
     const git = new GitCliClient();
-    expect(await git.commonDir(repo)).toBe(join(repo, '.git'));
-    expect(realpathSync(String(await git.topLevel(repo)))).toBe(repo);
+    expect(realpathSync.native(String(await git.commonDir(repo)))).toBe(realpathSync.native(join(repo, '.git')));
+    expect(realpathSync.native(String(await git.topLevel(repo)))).toBe(realpathSync.native(repo));
     expect(await git.remotes(repo)).toEqual(['origin']);
     expect(await git.remoteUrl(repo, 'origin')).toBe('git@github.com:scrapup/warlog.git');
     expect(await git.remoteUrl(repo, 'missing')).toBeUndefined();
