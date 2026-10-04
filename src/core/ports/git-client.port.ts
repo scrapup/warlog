@@ -31,4 +31,10 @@ export interface GitClient {
    * @returns The branch name, or `undefined` outside a repository.
    */
   currentBranch(cwd: string): Promise<string | undefined>;
+  /**
+   * Tells whether the git binary can be executed (`git --version`).
+   * @param cwd - Working directory.
+   * @returns `true` when git is available.
+   */
+  isAvailable(cwd: string): Promise<boolean>;
 }
