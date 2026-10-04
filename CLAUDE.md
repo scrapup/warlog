@@ -19,10 +19,16 @@ events; semantic search; staging/committing/pushing `.warlog/` changes.
 
 ## Current state
 
-Repository bootstrap and governance only. The code scaffold arrives with US-93; document the real
-structure here as it lands. The release workflow is wired, but **no Release PR may be merged
-before US-93 lands `package.json`, the lockfile and `.nvmrc`** (the `publish` job fails fast
-without them).
+Package scaffold and quality gates (US-93): `src/bin/warlog.ts` (prints `--version` only),
+`eslint.config.js`, `jest.config.ts` (projects `unit`, `integration`, `e2e-cli`, `e2e-mcp`,
+`bench`), `scripts/rules-coverage/**` (rule proof check) and `scripts/verify-local.ts`; CI job
+`verify` on Linux, macOS and Windows. Domain code arrives from US-94 on; document the real
+structure here as it lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
+each story removes the rules it proves.
+
+**Source conventions:** relative imports use the `.ts` extension (rewritten to `.js` on build);
+erasable TypeScript syntax only (no enums, no constructor parameter properties); Node ≥ 22 runs
+`scripts/*.ts` directly.
 
 ## Architecture (planned — plan §1, §4, §7; materialized from US-93 on)
 
@@ -61,10 +67,11 @@ without them).
 - **Workflows:** every `uses:` pinned to a full commit SHA with `# vX.Y.Z`; `permissions: {}` at the
   top, minimum permissions per job; installs with `--ignore-scripts`.
 
-## npm scripts (from US-93)
+## npm scripts
 
 `build`, `typecheck`, `lint`, `test:unit`, `test:integration`, `test:e2e`, `bench`,
-`rules:coverage`, `gen:skill`, `verify:local` (runs the same steps as the CI `verify` job).
+`rules:coverage`, `verify:local` (runs the same steps as the CI `verify` job); `gen:skill`
+arrives with US-103.
 
 ## Adding an operation
 
