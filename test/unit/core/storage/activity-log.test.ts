@@ -11,23 +11,23 @@ describe('ActivityLog', () => {
     const store = memoryStore();
     expect(await store.activity.append(REPO_ROOT, { ...INPUT, project_id: 'P', extra: { outcome: 'ok' } })).toBeUndefined();
     await store.activity.append(REPO_ROOT, { ...INPUT, action: 'updated', forced: true });
-    const lines = (store.fs.files.get(norm(join(REPO_ROOT, 'activity', 'test-host-abc123', '2026-10-03.jsonl'))) ?? '')
+    const lines = (store.fs.files.get(norm(join(REPO_ROOT, 'activity', 'm-abc12345', '2026-10-03.jsonl'))) ?? '')
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(lines).toEqual([
-      { ts: '2026-10-03T12:00:00.000Z', machine: 'test-host-abc123', ...INPUT, project_id: 'P', outcome: 'ok' },
-      { ts: '2026-10-03T12:00:00.000Z', machine: 'test-host-abc123', ...INPUT, action: 'updated', forced: true },
+      { ts: '2026-10-03T12:00:00.000Z', machine: 'm-abc12345', ...INPUT, project_id: 'P', outcome: 'ok' },
+      { ts: '2026-10-03T12:00:00.000Z', machine: 'm-abc12345', ...INPUT, action: 'updated', forced: true },
     ]);
   });
 
   it('[WL-04] two machines never write the same file', async () => {
-    const a = memoryStore({ machine: 'laptop-aaaaaa' });
-    const b = memoryStore({ machine: 'desktop-bbbbbb' });
+    const a = memoryStore({ machine: 'm-aaaaaaaa' });
+    const b = memoryStore({ machine: 'm-bbbbbbbb' });
     await a.activity.append(REPO_ROOT, INPUT);
     await b.activity.append(REPO_ROOT, INPUT);
-    expect([...a.fs.files.keys()][0]).toContain('/activity/laptop-aaaaaa/');
-    expect([...b.fs.files.keys()][0]).toContain('/activity/desktop-bbbbbb/');
+    expect([...a.fs.files.keys()][0]).toContain('/activity/m-aaaaaaaa/');
+    expect([...b.fs.files.keys()][0]).toContain('/activity/m-bbbbbbbb/');
   });
 
   it('reports a failed append as a warning without throwing', async () => {
@@ -43,7 +43,7 @@ describe('ActivityLog', () => {
     const store = memoryStore();
     await store.activity.append(REPO_ROOT, { ...INPUT, extra: { ts: 'forged', machine: 'forged', action: 'deleted' } });
     const line = JSON.parse([...store.fs.files.values()][0] ?? '{}') as Record<string, unknown>;
-    expect(line).toMatchObject({ ts: '2026-10-03T12:00:00.000Z', machine: 'test-host-abc123', action: 'created' });
+    expect(line).toMatchObject({ ts: '2026-10-03T12:00:00.000Z', machine: 'm-abc12345', action: 'created' });
   });
 
   it('[WL-49] never writes outside the root for an unsafe machine id', async () => {

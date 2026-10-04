@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
-import { LocalMachineId, isMachineId } from '../../../../src/core/adapters/local-machine-id.ts';
+import { LocalMachineId } from '../../../../src/core/adapters/local-machine-id.ts';
+import { isMachineId } from '../../../../src/core/security/identifiers.ts';
 import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
 import { MemoryEnv } from '../../../support/fakes/simple-fakes.ts';
 
@@ -50,7 +51,7 @@ describe('LocalMachineId', () => {
   it('fails fast with the path when the id cannot be read', async () => {
     const fs = new MemoryFileSystem();
     fs.readFile = async () => Promise.reject(new Error('EACCES'));
-    await expect(provider(fs).get()).rejects.toMatchObject({ code: 'INTERNAL', details: { path: ID_PATH } });
+    await expect(provider(fs).get()).rejects.toMatchObject({ code: 'INTERNAL', details: { file: 'machine-id' } });
   });
 
   it('fails fast when the id cannot be written', async () => {
@@ -59,10 +60,32 @@ describe('LocalMachineId', () => {
     await expect(provider(fs).get()).rejects.toMatchObject({ code: 'INTERNAL' });
   });
 
+  it('shares one resolution between concurrent first calls', async () => {
+    const fs = new MemoryFileSystem();
+    const machine = provider(fs);
+    const ids = await Promise.all([machine.get(), machine.get(), machine.get()]);
+    expect(new Set(ids).size).toBe(1);
+  });
+
+  it('retries after a failed first resolution', async () => {
+    const fs = new MemoryFileSystem();
+    fs.failWrites.add(ID_PATH);
+    const machine = provider(fs);
+    await expect(machine.get()).rejects.toMatchObject({ code: 'INTERNAL' });
+    fs.failWrites.clear();
+    expect(await machine.get()).toBe('m-07enw3ah');
+  });
+
   it('uses a valid WARLOG_MACHINE_ID override without touching the file', async () => {
     const fs = new MemoryFileSystem();
     expect(await provider(fs, { WARLOG_MACHINE_ID: 'ci-runner-1' }).get()).toBe('ci-runner-1');
     expect(fs.files.size).toBe(0);
+  });
+
+  it('prefers a valid WARLOG_MACHINE_ID over a stored id, leaving the file untouched', async () => {
+    const fs = new MemoryFileSystem({ [ID_PATH]: 'm-zzzzzzzz\n' });
+    expect(await provider(fs, { WARLOG_MACHINE_ID: 'ci-runner-1' }).get()).toBe('ci-runner-1');
+    expect(fs.files.get(ID_PATH)).toBe('m-zzzzzzzz\n');
   });
 
   it('rejects a malformed WARLOG_MACHINE_ID', async () => {
@@ -74,8 +97,12 @@ describe('LocalMachineId', () => {
     ['', false],
     ['UPPER', false],
     ['a/b', false],
+    ['a'.repeat(64), true],
     ['a'.repeat(65), false],
-  ])('validates machine id %p → %p', (id, ok) => {
+    ['-leading', false],
+    ['con', false],
+    ['nul', false],
+  ])('[WL-49] validates machine id %p → %p', (id, ok) => {
     expect(isMachineId(id)).toBe(ok);
   });
 });

@@ -45,25 +45,57 @@ export function lockPathOf(path: string): string {
   return join(dirname(path), `.${basename(path)}.lock`);
 }
 
+/** Identity of a lock file judged stale. */
+interface LockIdentity {
+  /** Inode observed when judged stale. */
+  readonly ino: number;
+  /** Token read when judged stale. */
+  readonly token: string | undefined;
+}
+
 /**
- * Breaks a lock older than the stale threshold by renaming it away (only one waiter wins).
+ * Moves a lock away only if it is still the exact file judged stale (same inode and token); a
+ * fresh lock created meanwhile by another waiter is put back untouched.
  * @param lockPath - Lock file.
- * @param options - Lock options.
- * @returns A promise resolved once handled.
+ * @param judged - Identity of the stale lock.
+ * @returns `true` when the stale lock was removed.
  */
-async function breakIfStale(lockPath: string, options: FileLockOptions): Promise<void> {
-  const info = await fs.stat(lockPath).catch(() => undefined);
-  if (info === undefined || Math.abs(Date.now() - info.mtimeMs) <= options.staleMs) {
-    return;
-  }
+async function removeIfSame(lockPath: string, judged: LockIdentity): Promise<boolean> {
   const graveyard = `${lockPath}.stale-${randomBytes(4).toString('hex')}`;
   try {
     await fs.rename(lockPath, graveyard);
   } catch {
-    return;
+    return false;
   }
+  const moved = await fs.stat(graveyard).catch(() => undefined);
+  const token = await fs.readFile(graveyard, 'utf8').catch(() => undefined);
+  if (moved?.ino === judged.ino && token === judged.token) {
+    await fs.rm(graveyard, { force: true });
+    return true;
+  }
+  await fs.link(graveyard, lockPath).catch(() => undefined);
   await fs.rm(graveyard, { force: true });
-  options.logger?.log('warn', 'fs.lock_stale_broken', { age_ms: Math.round(Math.abs(Date.now() - info.mtimeMs)) });
+  return false;
+}
+
+/**
+ * Breaks a lock older than the stale threshold (age is absolute, so clock skew counts too).
+ * @param lockPath - Lock file.
+ * @param options - Lock options.
+ * @returns `true` when the lock no longer exists after the attempt.
+ */
+async function breakIfStale(lockPath: string, options: FileLockOptions): Promise<boolean> {
+  const token = await fs.readFile(lockPath, 'utf8').catch(() => undefined);
+  const info = await fs.stat(lockPath).catch(() => undefined);
+  if (info === undefined) {
+    return true;
+  }
+  const age = Math.abs(Date.now() - info.mtimeMs);
+  if (age <= options.staleMs || !(await removeIfSame(lockPath, { ino: info.ino, token }))) {
+    return false;
+  }
+  options.logger?.log('warn', 'fs.lock_stale_broken', { file: basename(lockPath), age_ms: Math.round(age), future_mtime: info.mtimeMs > Date.now() });
+  return true;
 }
 
 /**
@@ -81,7 +113,10 @@ async function tryCreate(lockPath: string, token: string, options: FileLockOptio
     if (!BUSY_CODES.has(codeOf(error) ?? '')) {
       throw error;
     }
-    await breakIfStale(lockPath, options);
+    const gone = await breakIfStale(lockPath, options);
+    if (gone && codeOf(error) !== 'EEXIST' && (await fs.stat(lockPath).catch(() => undefined)) === undefined) {
+      throw error;
+    }
     return false;
   }
 }

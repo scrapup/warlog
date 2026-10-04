@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFileSystem } from '../../../../src/core/adapters/node-file-system.ts';
@@ -93,6 +93,8 @@ describe('NodeFileSystem writes', () => {
     expect(await fs.readFile(target)).toBe('previous');
     await fs.writeFileAtomic(target, 'next');
     expect(await fs.readFile(target)).toBe('next');
+    expect(readdirSync(dir).sort()).toEqual(['.c.md.tmp-999-deadbeef', 'c.md']);
+    expect(readFileSync(join(dir, '.c.md.tmp-999-deadbeef'), 'utf8')).toBe('partial');
   });
 
   it('[WL-41] removes the temporary file on failure and reports only the file name', async () => {
@@ -196,7 +198,7 @@ describe('NodeFileSystem locks', () => {
     utimesSync(join(dir, '.task.md.lock'), old, old);
     const logger = new RecordingLogger();
     const release = await new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 500, logger }).lock(target);
-    expect(readFileSync(join(dir, '.task.md.lock'), 'utf8')).not.toBe('dead-holder');
+    expect(readFileSync(join(dir, '.task.md.lock'), 'utf8')).toMatch(new RegExp(`^${process.pid}-[0-9a-f]{16}$`));
     await release();
     expect(readdirSync(dir)).toEqual([]);
     expect(logger.events.map((e) => e.event)).toEqual(['fs.lock_stale_broken']);
@@ -207,8 +209,53 @@ describe('NodeFileSystem locks', () => {
     writeFileSync(join(dir, '.task.md.lock'), 'skewed');
     const future = new Date(Date.now() + 3_600_000);
     utimesSync(join(dir, '.task.md.lock'), future, future);
-    const release = await new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 500 }).lock(target);
+    const logger = new RecordingLogger();
+    const release = await new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 500, logger }).lock(target);
     await release();
+    expect(logger.events.map((e) => e.fields['future_mtime'])).toEqual([true]);
+  });
+
+  it('[WL-42] two waiters on one stale lock both end up holding it, one after the other', async () => {
+    const target = join(dir, 'task.md');
+    writeFileSync(join(dir, '.task.md.lock'), 'dead-holder');
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(join(dir, '.task.md.lock'), old, old);
+    const logger = new RecordingLogger();
+    const fs = new NodeFileSystem({ lockStaleMs: 1_000, lockTimeoutMs: 3_000, logger });
+    const order: string[] = [];
+    const take = async (name: string): Promise<void> => {
+      const release = await fs.lock(target);
+      order.push(`in-${name}`);
+      await new Promise((r) => setTimeout(r, 20));
+      order.push(`out-${name}`);
+      await release();
+    };
+    await Promise.all([take('a'), take('b')]);
+    expect(order[0]?.startsWith('in-')).toBe(true);
+    expect(order[1]?.startsWith('out-')).toBe(true);
+    expect(order[0]?.slice(3)).toBe(order[1]?.slice(4));
+    expect(logger.events.filter((e) => e.event === 'fs.lock_stale_broken')).toHaveLength(1);
+  });
+
+  it('rethrows I/O errors instead of waiting for a lock that can never be created', async () => {
+    writeFileSync(join(dir, 'file'), '');
+    await expect(new NodeFileSystem({ lockTimeoutMs: 2_000 }).lock(join(dir, 'file', 'task.md'))).rejects.toMatchObject({
+      code: expect.stringMatching(/^E(EXIST|NOTDIR)$/),
+    });
+  });
+
+  it('[WL-42] fails fast (not CONFLICT) when the directory cannot be written', async () => {
+    if (process.platform === 'win32' || process.getuid?.() === 0) {
+      return;
+    }
+    const locked = join(dir, 'ro');
+    mkdirSync(locked);
+    chmodSync(locked, 0o500);
+    try {
+      await expect(new NodeFileSystem({ lockTimeoutMs: 2_000 }).lock(join(locked, 'task.md'))).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      chmodSync(locked, 0o700);
+    }
   });
 
   it('[WL-42] never removes a lock it no longer owns', async () => {

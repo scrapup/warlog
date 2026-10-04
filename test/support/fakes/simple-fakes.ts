@@ -93,14 +93,6 @@ export class MemoryEnv implements Env {
   }
 
   /**
-   * Returns the host name.
-   * @returns Host name.
-   */
-  hostName(): string {
-    return 'test-host';
-  }
-
-  /**
    * Returns the working directory.
    * @returns Path.
    */
@@ -135,7 +127,7 @@ export class FixedMachineId implements MachineIdProvider {
    * Creates the provider.
    * @param id - The id.
    */
-  constructor(id = 'test-host-abc123') {
+  constructor(id = 'm-abc12345') {
     this.id = id;
   }
 

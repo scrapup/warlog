@@ -1,7 +1,7 @@
 /**
  * Node process implementation of the {@link Env} port.
  */
-import { homedir, hostname } from 'node:os';
+import { homedir } from 'node:os';
 import type { Env } from '../ports/env.port.ts';
 
 /** Environment backed by `process.env` and `node:os`. */
@@ -22,14 +22,6 @@ export class ProcessEnv implements Env {
    */
   homeDir(): string {
     return homedir();
-  }
-
-  /**
-   * Returns the host name.
-   * @returns Host name.
-   */
-  hostName(): string {
-    return hostname();
   }
 
   /**

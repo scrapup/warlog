@@ -26,6 +26,21 @@ interface WildcardToken {
 type Token = LiteralToken | WildcardToken;
 
 /**
+ * Token of a single pattern character.
+ * @param ch - Pattern character.
+ * @returns `star` for `*`, `any` for `?`, a literal otherwise.
+ */
+function charToken(ch: string): Token {
+  if (ch === '*') {
+    return { kind: 'star' };
+  }
+  if (ch === '?') {
+    return { kind: 'any' };
+  }
+  return { kind: 'literal', ch };
+}
+
+/**
  * Compiles a pattern into tokens.
  * @param pattern - Glob pattern.
  * @returns Tokens.
@@ -41,8 +56,7 @@ function compile(pattern: string): Token[] {
       tokens.push({ kind: 'globstar' });
       i += 2;
     } else {
-      const ch = pattern.charAt(i);
-      tokens.push(ch === '*' ? { kind: 'star' } : ch === '?' ? { kind: 'any' } : { kind: 'literal', ch });
+      tokens.push(charToken(pattern.charAt(i)));
       i += 1;
     }
   }

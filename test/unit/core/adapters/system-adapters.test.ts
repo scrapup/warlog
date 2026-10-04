@@ -49,7 +49,6 @@ describe('ProcessEnv', () => {
     expect(env.get('WARLOG_TEST_EMPTY')).toBeUndefined();
     expect(env.get('WARLOG_TEST_UNSET_XYZ')).toBeUndefined();
     expect(env.homeDir().length).toBeGreaterThan(0);
-    expect(env.hostName().length).toBeGreaterThan(0);
     expect(env.cwd()).toBe(process.cwd());
   });
 });

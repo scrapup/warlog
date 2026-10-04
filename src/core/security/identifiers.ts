@@ -4,6 +4,7 @@
  */
 import { WarlogError } from '../errors/warlog-error.ts';
 import { isAlnum, isLowerAlnum } from './char-classes.ts';
+import { isSafeSegment } from './path-guard.ts';
 
 /** Crockford base32 alphabet of ULIDs (upper case). */
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -45,6 +46,17 @@ export function isSlug(text: string): boolean {
 export function isRepoKey(text: string): boolean {
   const charsOk = [...text].every((ch) => isAlnum(ch) || ch === '_' || ch === '.' || ch === '-');
   return text.length >= 1 && text.length <= 200 && charsOk && !text.includes('..') && !text.startsWith('.');
+}
+
+/**
+ * Tells whether a text is a machine id: `[a-z0-9-]{1,64}`, not starting with `-`, and a safe
+ * path segment (WL-49: it names activity directories).
+ * @param id - Candidate.
+ * @returns `true` when valid.
+ */
+export function isMachineId(id: string): boolean {
+  const charsOk = [...id].every((ch) => isLowerAlnum(ch) || ch === '-');
+  return id.length >= 1 && id.length <= 64 && !id.startsWith('-') && charsOk && isSafeSegment(id);
 }
 
 /**

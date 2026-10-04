@@ -9,19 +9,16 @@ import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
 import type { Env } from '../ports/env.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
-import { isLowerAlnum } from '../security/char-classes.ts';
+import { assertValid, isMachineId } from '../security/identifiers.ts';
+
+/** Environment variable overriding the stored machine id. */
+const OVERRIDE_VAR = 'WARLOG_MACHINE_ID';
+
+/** Random characters of a generated id. */
+const ID_RANDOM_CHARS = 8;
 
 /** Crockford base32 alphabet (lower case) used for the random suffix. */
 const BASE32 = '0123456789abcdefghjkmnpqrstvwxyz';
-
-/**
- * Tells whether a stored machine id is well formed: `[a-z0-9-]{1,64}`.
- * @param id - Candidate.
- * @returns `true` when valid.
- */
-export function isMachineId(id: string): boolean {
-  return id.length >= 1 && id.length <= 64 && [...id].every((ch) => isLowerAlnum(ch) || ch === '-');
-}
 
 /** Collaborators of {@link LocalMachineId}. */
 export interface LocalMachineIdDeps {
@@ -37,8 +34,10 @@ export interface LocalMachineIdDeps {
 export class LocalMachineId implements MachineIdProvider {
   /** Collaborators. */
   private readonly deps: LocalMachineIdDeps;
-  /** Cached id. */
+  /** Cached id (or the in-flight resolution, so concurrent first calls share it). */
   private cached: string | undefined;
+  /** In-flight resolution. */
+  private pending: Promise<string> | undefined;
 
   /**
    * Creates the provider.
@@ -57,19 +56,30 @@ export class LocalMachineId implements MachineIdProvider {
     if (this.cached !== undefined) {
       return this.cached;
     }
-    const override = this.deps.env.get('WARLOG_MACHINE_ID');
+    const override = this.deps.env.get(OVERRIDE_VAR);
     if (override !== undefined) {
-      if (!isMachineId(override)) {
-        throw new WarlogError('VALIDATION', 'WARLOG_MACHINE_ID must match [a-z0-9-]{1,64}', { field: 'WARLOG_MACHINE_ID' });
-      }
+      assertValid(isMachineId(override), OVERRIDE_VAR, 'a machine id ([a-z0-9-]{1,64})');
       this.cached = override;
       return override;
     }
+    this.pending ??= this.resolveStored().catch((error: unknown) => {
+      this.pending = undefined;
+      throw error;
+    });
+    this.cached = await this.pending;
+    return this.cached;
+  }
+
+  /**
+   * Reads the stored id or creates it.
+   * @returns The id.
+   * @throws {WarlogError} `INTERNAL` when the file cannot be read or written.
+   */
+  private async resolveStored(): Promise<string> {
     const xdg = this.deps.env.get('XDG_CONFIG_HOME');
     const configDir = xdg !== undefined && isAbsolute(xdg) ? xdg : join(this.deps.env.homeDir(), '.config');
     const path = join(configDir, 'warlog', 'machine-id');
-    this.cached = (await this.read(path)) ?? (await this.create(path));
-    return this.cached;
+    return (await this.read(path)) ?? (await this.create(path));
   }
 
   /**
@@ -81,7 +91,7 @@ export class LocalMachineId implements MachineIdProvider {
     try {
       const value = (await this.deps.fs.readFile(path)).trim();
       if (value !== '' && !isMachineId(value)) {
-        throw new WarlogError('INTERNAL', 'machine id file is malformed', { path });
+        throw new WarlogError('INTERNAL', 'machine id file is malformed', { file: 'machine-id' });
       }
       return value === '' ? undefined : value;
     } catch (error: unknown) {
@@ -91,7 +101,7 @@ export class LocalMachineId implements MachineIdProvider {
       if (isWarlogError(error, 'INTERNAL')) {
         throw error;
       }
-      throw new WarlogError('INTERNAL', `cannot read machine id at ${path}`, { path }, { cause: error });
+      throw new WarlogError('INTERNAL', 'cannot read the machine id file', { file: 'machine-id' }, { cause: error });
     }
   }
 
@@ -102,11 +112,11 @@ export class LocalMachineId implements MachineIdProvider {
    * @throws {WarlogError} `INTERNAL` when the file cannot be written.
    */
   private async create(path: string): Promise<string> {
-    const id = `m-${[...this.deps.random(8)].map((b) => BASE32[b % 32]).join('')}`;
+    const id = `m-${[...this.deps.random(ID_RANDOM_CHARS)].map((b) => BASE32[b % BASE32.length]).join('')}`;
     try {
       await this.deps.fs.writeFileAtomic(path, `${id}\n`);
     } catch (error: unknown) {
-      throw new WarlogError('INTERNAL', `cannot create machine id at ${path}`, { path }, { cause: error });
+      throw new WarlogError('INTERNAL', 'cannot create the machine id file', { file: 'machine-id' }, { cause: error });
     }
     return id;
   }

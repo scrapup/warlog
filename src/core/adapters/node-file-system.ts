@@ -25,6 +25,15 @@ export interface NodeFileSystemOptions {
   readonly logger?: Logger;
 }
 
+/** Default rename attempts. */
+const DEFAULT_RENAME_ATTEMPTS = 3;
+/** Default delay between rename attempts (ms). */
+const DEFAULT_RENAME_BACKOFF_MS = 20;
+/** Default maximum wait for a lock (ms). */
+const DEFAULT_LOCK_TIMEOUT_MS = 8_000;
+/** Default stale-lock age (ms), below the lock timeout so an orphan is broken while waiting. */
+const DEFAULT_LOCK_STALE_MS = 4_000;
+
 /** Error codes of transient rename failures (Windows file locks). */
 const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
 
@@ -58,10 +67,10 @@ export class NodeFileSystem implements FileSystem {
    */
   constructor(options: NodeFileSystemOptions = {}) {
     this.renameFn = options.rename ?? fs.rename;
-    this.renameAttempts = options.renameAttempts ?? 3;
-    this.renameBackoffMs = options.renameBackoffMs ?? 20;
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 8_000;
-    this.lockStaleMs = options.lockStaleMs ?? 4_000;
+    this.renameAttempts = options.renameAttempts ?? DEFAULT_RENAME_ATTEMPTS;
+    this.renameBackoffMs = options.renameBackoffMs ?? DEFAULT_RENAME_BACKOFF_MS;
+    this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
+    this.lockStaleMs = options.lockStaleMs ?? DEFAULT_LOCK_STALE_MS;
     this.logger = options.logger;
   }
 

@@ -131,15 +131,17 @@ export class GitCliClient implements GitClient {
    */
   private run(cwd: string, args: readonly string[]): Promise<string | undefined> {
     assertReadOnlyGit(args);
+    const startedAt = Date.now();
     return new Promise((resolve, reject) => {
       execFile(this.binary, [...args], { cwd, encoding: 'utf8', timeout: GIT_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
         if (error === null) {
           resolve(stdout.trim());
           return;
         }
+        const expected = isExpectedGitFailure(error);
         const fields = { subcommand: args[0], exit_code: error.code, signal: error.signal ?? undefined, timed_out: error.killed === true };
-        this.logger?.log('debug', 'git.command_failed', fields);
-        if (isExpectedGitFailure(error)) {
+        this.logger?.log(expected ? 'debug' : 'warn', 'git.command_failed', { ...fields, duration_ms: Date.now() - startedAt });
+        if (expected) {
           resolve(undefined);
         } else {
           reject(new WarlogError('INTERNAL', `git ${args[0] ?? ''} failed`, { subcommand: args[0], timed_out: fields.timed_out }, { cause: error }));

@@ -169,7 +169,7 @@ export class MemoryFileSystem implements FileSystem {
   async lock(path: string): Promise<ReleaseLock> {
     const p = this.resolve(path);
     if (this.locks.has(p)) {
-      throw new WarlogError('CONFLICT', `${path} is locked by another writer`, { path });
+      throw new WarlogError('CONFLICT', `${path} is locked by another writer`, { reason: 'locked' });
     }
     this.locks.add(p);
     return async () => {

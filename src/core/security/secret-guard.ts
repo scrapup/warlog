@@ -28,6 +28,12 @@ interface SecretPattern {
   readonly max: number;
 }
 
+/** Opening of a PEM header. */
+const PEM_BEGIN = '-----BEGIN ';
+
+/** Maximum length of a PEM header scanned for `PRIVATE KEY`. */
+const MAX_PEM_HEADER_LENGTH = 64;
+
 /** Maximum nesting depth walked (deeper input is rejected, SEC-23). */
 export const MAX_SECRET_SCAN_DEPTH = 64;
 
@@ -74,9 +80,9 @@ function matchesPattern(text: string, pattern: SecretPattern): boolean {
  * @returns `true` for `-----BEGIN … PRIVATE KEY-----`.
  */
 function hasPrivateKey(text: string): boolean {
-  for (let i = text.indexOf('-----BEGIN '); i >= 0; i = text.indexOf('-----BEGIN ', i + 1)) {
-    const end = text.indexOf('-----', i + 11);
-    if (end > 0 && end - i <= 64 && text.slice(i, end).endsWith('PRIVATE KEY')) {
+  for (let i = text.indexOf(PEM_BEGIN); i >= 0; i = text.indexOf(PEM_BEGIN, i + 1)) {
+    const end = text.indexOf('-----', i + PEM_BEGIN.length);
+    if (end > 0 && end - i <= MAX_PEM_HEADER_LENGTH && text.slice(i, end).endsWith('PRIVATE KEY')) {
       return true;
     }
   }

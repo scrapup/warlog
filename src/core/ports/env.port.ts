@@ -12,11 +12,6 @@ export interface Env {
    */
   homeDir(): string;
   /**
-   * Returns the host name of this machine.
-   * @returns Host name.
-   */
-  hostName(): string;
-  /**
    * Returns the current working directory.
    * @returns Absolute path.
    */

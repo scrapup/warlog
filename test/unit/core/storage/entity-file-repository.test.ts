@@ -16,7 +16,7 @@ describe('EntityFileRepository', () => {
         rev: 1,
         created_at: '2026-10-03T12:00:00.000Z',
         updated_at: '2026-10-03T12:00:00.000Z',
-        machine: 'test-host-abc123',
+        machine: 'm-abc12345',
         status: 'todo',
         title: 'Write tests',
       },

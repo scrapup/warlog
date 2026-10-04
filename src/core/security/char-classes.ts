@@ -8,7 +8,7 @@
  * @returns `true` for `A-Z`, `a-z`, `0-9`.
  */
 export function isAlnum(ch: string): boolean {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || isDigit(ch);
 }
 
 /**
@@ -35,7 +35,7 @@ export function isLowerAlnum(ch: string): boolean {
  * @returns `true` for `A-Z`, `0-9`.
  */
 export function isUpperAlnum(ch: string): boolean {
-  return (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
+  return (ch >= 'A' && ch <= 'Z') || isDigit(ch);
 }
 
 /**

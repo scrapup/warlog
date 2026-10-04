@@ -4,7 +4,7 @@ import type { ExecFileException } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveGitBinary } from '../../../../src/core/git/git-binary.ts';
+import { UNRESOLVED_GIT, resolveGitBinary } from '../../../../src/core/git/git-binary.ts';
 import { GitCliClient, assertReadOnlyGit, isExpectedGitFailure } from '../../../../src/core/git/git-cli-client.ts';
 import { RecordingLogger } from '../../../support/fakes/simple-fakes.ts';
 
@@ -75,7 +75,9 @@ describe('GitCliClient', () => {
     expect(await git.commonDir(outside)).toBeUndefined();
     expect(await git.currentBranch(outside)).toBeUndefined();
     expect(await git.remotes(outside)).toEqual([]);
-    expect(logger.events.every((e) => e.event === 'git.command_failed' && !JSON.stringify(e.fields).includes(outside))).toBe(true);
+    expect(logger.events.map((e) => e.event)).toEqual(['git.command_failed', 'git.command_failed', 'git.command_failed']);
+    expect(logger.events.every((e) => e.level === 'debug')).toBe(true);
+    expect(JSON.stringify(logger.events)).not.toContain(outside);
   });
 });
 
@@ -107,7 +109,11 @@ describe('resolveGitBinary', () => {
     expect(seen.every((p) => !p.startsWith('.'))).toBe(true);
   });
 
-  it('falls back to plain git on Windows when nothing is found', () => {
-    expect(resolveGitBinary('win32', undefined, () => false)).toBe('git');
+  it('never falls back to a bare git on Windows (it would be searched in the working directory)', () => {
+    expect(resolveGitBinary('win32', undefined, () => false)).toBe(UNRESOLVED_GIT);
+  });
+
+  it('accepts quoted PATH entries on Windows', () => {
+    expect(resolveGitBinary('win32', '"C:\\Program Files\\Git\\cmd"', (p) => p.endsWith('git.exe'))).toContain('Program Files');
   });
 });
