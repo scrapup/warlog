@@ -5,3 +5,6 @@ coverage/
 *.tgz
 .DS_Store
 reports/
+.env*
+*.pem
+*.key

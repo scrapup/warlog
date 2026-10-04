@@ -16,6 +16,15 @@ interface PackageManifest {
 }
 
 /**
+ * Tells whether a parsed `package.json` has a string version.
+ * @param value - Parsed JSON.
+ * @returns `true` when `value.version` is a string.
+ */
+function isPackageManifest(value: unknown): value is PackageManifest {
+  return typeof value === 'object' && value !== null && typeof (value as Partial<PackageManifest>).version === 'string';
+}
+
+/**
  * Reads the package version from the `package.json` two levels above this file
  * (`src/bin` in development, `dist/bin` once built).
  * @returns The package version string.
@@ -23,10 +32,10 @@ interface PackageManifest {
  */
 function readVersion(): string {
   const raw: unknown = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-  if (typeof raw !== 'object' || raw === null || typeof (raw as Partial<PackageManifest>).version !== 'string') {
+  if (!isPackageManifest(raw)) {
     throw new Error('package.json has no version');
   }
-  return (raw as PackageManifest).version;
+  return raw.version;
 }
 
 const args = process.argv.slice(2);

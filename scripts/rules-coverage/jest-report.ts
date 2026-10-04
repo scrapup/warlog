@@ -20,9 +20,10 @@ export class MalformedReportError extends Error {
    * Creates the error.
    * @param file - Report file name.
    * @param reason - What is wrong with it.
+   * @param options - Standard error options (e.g. the parse error as `cause`).
    */
-  constructor(file: string, reason: string) {
-    super(`malformed Jest report ${file}: ${reason}`);
+  constructor(file: string, reason: string, options?: ErrorOptions) {
+    super(`malformed Jest report ${file}: ${reason}`, options);
     this.name = 'MalformedReportError';
     this.file = file;
   }
@@ -81,8 +82,8 @@ export function parseJestReport(file: string, text: string): RuleProof[] {
   let data: unknown;
   try {
     data = JSON.parse(text);
-  } catch {
-    throw new MalformedReportError(file, 'invalid JSON');
+  } catch (cause: unknown) {
+    throw new MalformedReportError(file, 'invalid JSON', { cause });
   }
   if (!isObject(data) || !Array.isArray(data['testResults'])) {
     throw new MalformedReportError(file, 'missing testResults[]');

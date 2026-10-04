@@ -2,6 +2,7 @@ name: ci
 
 # Quality gates (P-03, plan §7.5). Required check names are frozen:
 # `verify (ubuntu-latest)`, `verify (macos-latest)`, `verify (windows-latest)`.
+# Keep the steps in sync with scripts/verify-local.ts.
 
 on:
   pull_request:
@@ -12,7 +13,7 @@ permissions: {}
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
@@ -45,7 +46,8 @@ jobs:
       - run: npm run build
       - run: npm run test:integration -- --json --outputFile=reports/jest-integration.json
       - run: npm run test:e2e -- --json --outputFile=reports/jest-e2e.json
-      - run: npm run rules:coverage -- --allow-missing scripts/rules-pending.txt
+      - id: rules
+        run: npm run rules:coverage -- --allow-missing scripts/rules-pending.txt
       - run: npm run bench -- --ci
 
       - name: Summary
@@ -56,7 +58,9 @@ jobs:
             if [ -f coverage/coverage-summary.json ]; then
               node -e "const t=require('./coverage/coverage-summary.json').total;for(const k of ['statements','branches','functions','lines'])console.log('- '+k+': '+t[k].pct+' %')"
             fi
-            if [ -f docs/evidence/rules-coverage.md ]; then
+            if [ "${{ steps.rules.outcome }}" = "success" ] || [ "${{ steps.rules.outcome }}" = "failure" ]; then
               grep -m1 '^Proven:' docs/evidence/rules-coverage.md || true
+            else
+              echo "- rules:coverage: not run"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

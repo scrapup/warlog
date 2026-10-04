@@ -7,7 +7,7 @@ import type { Config } from 'jest';
 export const COVERAGE_GATE = 95;
 
 /** ts-jest ESM transform shared by every project. */
-const transform: NonNullable<Config['transform']> = {
+const TRANSFORM: NonNullable<Config['transform']> = {
   '^.+\\.ts$': ['ts-jest', { useESM: true, tsconfig: 'tsconfig.json' }],
 };
 
@@ -23,7 +23,7 @@ function project(name: string, testMatch: string): Config {
     rootDir: '.',
     testEnvironment: 'node',
     extensionsToTreatAsEsm: ['.ts'],
-    transform,
+    transform: TRANSFORM,
     // ts-jest rewrites relative `.ts` imports to `.js`; resolve them back to the sources.
     moduleNameMapper: { '^(\\.{1,2}/.*)\\.js$': '$1' },
     testMatch: [`<rootDir>/test/${name}/**/${testMatch}`],

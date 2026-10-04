@@ -12,15 +12,15 @@ export interface RulesFileSystem {
    */
   readText(path: string): Promise<string>;
   /**
-   * Writes a UTF-8 text file, creating parent folders when missing.
+   * Writes a UTF-8 text file, creating parent directories when missing.
    * @param path - File path.
    * @param content - Text to write.
    * @returns A promise resolved once written.
    */
   writeText(path: string, content: string): Promise<void>;
   /**
-   * Lists the entry names of a folder (non-recursive).
-   * @param path - Folder path.
+   * Lists the entry names of a directory (non-recursive).
+   * @param path - Directory path.
    * @returns Entry names.
    */
   listDir(path: string): Promise<string[]>;

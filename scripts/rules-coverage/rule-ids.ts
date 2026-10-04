@@ -19,6 +19,36 @@ export const CODE_LEVEL_RANGES: readonly RuleRange[] = [
   { prefix: 'SEC', from: 21, to: 24 },
 ];
 
+/** Upper bound of an identifier length; longer cells/titles are not rule ids. */
+const MAX_RULE_ID_LENGTH = 16;
+
+/**
+ * Formats a rule number with at least two digits (`7` → `07`).
+ * @param n - Rule number.
+ * @returns The padded number.
+ */
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Describes the code-level ranges for humans, e.g. `WL-01..WL-49, SEC-21..SEC-24`.
+ * @returns The description.
+ */
+export function describeCodeLevelRanges(): string {
+  return CODE_LEVEL_RANGES.map((r) => `${r.prefix}-${pad(r.from)}..${r.prefix}-${pad(r.to)}`).join(', ');
+}
+
+/**
+ * Lists every identifier the code-level ranges expect to find in the specification.
+ * @returns Identifiers in range order.
+ */
+export function expectedCodeLevelIds(): string[] {
+  return CODE_LEVEL_RANGES.flatMap((r) =>
+    Array.from({ length: r.to - r.from + 1 }, (_, i) => `${r.prefix}-${pad(r.from + i)}`),
+  );
+}
+
 /** Parsed form of a rule identifier such as `WL-07`. */
 export interface ParsedRuleId {
   /** Family prefix (`WL`, `SEC`). */
@@ -52,7 +82,7 @@ function isUpper(ch: string): boolean {
  */
 export function parseRuleId(text: string): ParsedRuleId | undefined {
   const dash = text.indexOf('-');
-  if (dash < 1 || dash === text.length - 1 || text.length > 16) {
+  if (dash < 1 || dash === text.length - 1 || text.length > MAX_RULE_ID_LENGTH) {
     return undefined;
   }
   const prefix = text.slice(0, dash);

@@ -18,13 +18,13 @@ function runFixture(coverAll: boolean): ReturnType<typeof runNode> {
 describe('unit coverage gate (plan §7.3)', () => {
   it('fails a project below 95 % (fixture at ~94 % statements)', () => {
     const result = runFixture(false);
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(1);
     expect(result.stdout + result.stderr).toMatch(/Coverage for statements \(94\.\d+%\) does not meet "global" threshold \(95%\)/);
   }, 120_000);
 
   it('passes the same project at 100 %', () => {
     const result = runFixture(true);
-    expect(result.stderr).not.toContain('does not meet');
+    expect(result.stdout + result.stderr).toMatch(/Statements\s*:\s*100%/);
     expect(result.status).toBe(0);
   }, 120_000);
 });

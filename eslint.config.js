@@ -4,7 +4,7 @@ import jsdoc from 'eslint-plugin-jsdoc';
 import tseslint from 'typescript-eslint';
 
 /** Source files subject to the documentation and design gates (fixtures mirror them). */
-const SOURCE = ['src/**/*.ts', 'scripts/**/*.ts', 'test/fixtures/lint/src/**/*.ts'];
+const SOURCE = ['src/**/*.ts', 'scripts/**/*.ts', 'test/fixtures/lint/src/**/*.ts', 'test/fixtures/lint/scripts/**/*.ts'];
 
 /** Files that must depend on ports only (no Node side-effect modules, no adapters). */
 const PORT_ONLY = [
@@ -39,7 +39,7 @@ export default tseslint.config(
   },
   {
     files: SOURCE,
-    linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: 'error' },
+    linterOptions: { noInlineConfig: true },
     plugins: { jsdoc },
     settings: { jsdoc: { mode: 'typescript' } },
     rules: {
@@ -72,14 +72,11 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            { name: 'node:fs', message: 'Use the FileSystem port.' },
-            { name: 'node:fs/promises', message: 'Use the FileSystem port.' },
-            { name: 'node:child_process', message: 'Use the GitClient port.' },
-            { name: 'fs', message: 'Use the FileSystem port.' },
-            { name: 'child_process', message: 'Use the GitClient port.' },
+          patterns: [
+            { regex: '^(node:)?fs(/.*)?$', message: 'Use the FileSystem port.' },
+            { regex: '^(node:)?child_process$', message: 'Use the GitClient port.' },
+            { regex: '(^|/)adapters(/|\\.ts$|\\.js$|$)', message: 'Depend on ports, not adapters.' },
           ],
-          patterns: [{ regex: '(^|/)adapters/', message: 'Depend on ports, not adapters.' }],
         },
       ],
     },

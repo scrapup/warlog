@@ -13,20 +13,28 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+/** Options of a process run. */
+export interface RunNodeOptions {
+  /** Working directory (default: current). */
+  readonly cwd?: string;
+  /** Extra environment variables. */
+  readonly env?: Record<string, string>;
+  /** Kill timeout in milliseconds; keep it below the Jest test timeout (default 110 s). */
+  readonly timeoutMs?: number;
+}
+
 /**
  * Runs `node <args>` synchronously with a timeout.
  * @param args - Node arguments (script and its arguments).
- * @param options - Working directory and extra environment.
- * @param options.cwd - Working directory.
- * @param options.env - Extra environment variables.
+ * @param options - Run options.
  * @returns The captured result.
  */
-export function runNode(args: readonly string[], options: { cwd?: string; env?: Record<string, string> } = {}): ProcessResult {
+export function runNode(args: readonly string[], options: RunNodeOptions = {}): ProcessResult {
   const result = spawnSync(process.execPath, [...args], {
     cwd: options.cwd ?? process.cwd(),
     env: { ...process.env, ...options.env },
     encoding: 'utf8',
-    timeout: 120_000,
+    timeout: options.timeoutMs ?? 110_000,
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }

@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 
 /** Ordered npm script invocations (script name and extra arguments). */
-const STEPS: ReadonlyArray<readonly [string, ...string[]]> = [
+// Keep in sync with the `verify` job steps of .github/workflows/ci.yml.
+const STEPS: readonly (readonly [string, ...string[]])[] = [
   ['typecheck'],
   ['lint'],
   ['test:unit', '--coverage', '--json', '--outputFile=reports/jest-unit.json'],
@@ -20,12 +21,15 @@ const STEPS: ReadonlyArray<readonly [string, ...string[]]> = [
 rmSync('reports', { recursive: true, force: true });
 mkdirSync('reports');
 for (const [script, ...args] of STEPS) {
-  process.stdout.write(`\n▶ npm run ${script}\n`);
+  process.stdout.write(`\nverify:local step: npm run ${script}\n`);
   const npmArgs = args.length > 0 ? ['run', script, '--', ...args] : ['run', script];
   const result = spawnSync('npm', npmArgs, { stdio: 'inherit', shell: process.platform === 'win32' });
   if (result.status !== 0) {
-    process.stderr.write(`verify:local failed at ${script}\n`);
-    process.exit(result.status ?? 1);
+    process.stderr.write(`verify:local failed at ${script}${result.error ? `: ${result.error.message}` : ''}\n`);
+    process.exitCode = result.status ?? 1;
+    break;
   }
 }
-process.stdout.write('\nverify:local passed\n');
+if (process.exitCode === undefined) {
+  process.stdout.write('\nverify:local passed\n');
+}

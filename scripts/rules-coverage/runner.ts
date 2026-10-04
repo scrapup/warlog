@@ -1,11 +1,12 @@
 /**
  * Orchestration of the rules-coverage check (plan §7.4): reads the specification and the
  * Jest JSON reports through an injected file system, writes the evidence file and returns
- * the exit code.
+ * the exit code. Fails closed on an unreadable specification or report.
  */
 import { checkCoverage, parseAllowList, renderReport } from './coverage-check.ts';
+import type { CoverageResult } from './coverage-check.ts';
 import type { RulesFileSystem } from './file-system.ts';
-import { MalformedReportError, parseJestReport } from './jest-report.ts';
+import { parseJestReport } from './jest-report.ts';
 import type { RuleProof } from './jest-report.ts';
 import { extractSpecRuleIds } from './rule-ids.ts';
 
@@ -13,7 +14,7 @@ import { extractSpecRuleIds } from './rule-ids.ts';
 export interface RulesCoverageOptions {
   /** Specification Markdown path. */
   readonly specPath: string;
-  /** Folder holding the Jest `--json` reports (`*.json`). */
+  /** Directory holding the Jest `--json` reports (`*.json`). */
   readonly reportsDir: string;
   /** Evidence Markdown output path. */
   readonly outPath: string;
@@ -28,6 +29,9 @@ export interface RulesCoverageOutcome {
   /** Human-readable summary. */
   readonly message: string;
 }
+
+/** Mutable view of the options, used while parsing arguments. */
+type MutableOptions = { -readonly [K in keyof RulesCoverageOptions]: RulesCoverageOptions[K] };
 
 /** Default option values. */
 const DEFAULTS: RulesCoverageOptions = {
@@ -51,7 +55,7 @@ const FLAGS: Readonly<Record<string, keyof RulesCoverageOptions>> = {
  * @throws {Error} On an unknown flag or a flag without value.
  */
 export function parseArgs(argv: readonly string[]): RulesCoverageOptions {
-  const options: Record<string, string> = { ...DEFAULTS };
+  const options: MutableOptions = { ...DEFAULTS };
   for (let i = 0; i < argv.length; i += 2) {
     const flag = String(argv[i]);
     const key = FLAGS[flag];
@@ -61,16 +65,16 @@ export function parseArgs(argv: readonly string[]): RulesCoverageOptions {
     }
     options[key] = value;
   }
-  return options as unknown as RulesCoverageOptions;
+  return options;
 }
 
 /**
- * Reads every `*.json` report of a folder.
+ * Reads every `*.json` report of a directory.
  * @param fs - File system.
- * @param dir - Reports folder.
+ * @param dir - Reports directory.
  * @returns Proofs of all reports.
- * @throws {MalformedReportError} When a report is malformed.
- * @throws {Error} When the folder holds no report.
+ * @throws {Error} `MalformedReportError` when a report is malformed.
+ * @throws {Error} When the directory holds no report.
  */
 async function readProofs(fs: RulesFileSystem, dir: string): Promise<RuleProof[]> {
   const files = (await fs.listDir(dir)).filter((f) => f.endsWith('.json')).sort();
@@ -85,10 +89,36 @@ async function readProofs(fs: RulesFileSystem, dir: string): Promise<RuleProof[]
 }
 
 /**
+ * Turns a coverage result into the run outcome.
+ * @param result - Coverage result.
+ * @param specPath - Specification path (for messages).
+ * @returns The outcome.
+ */
+function outcomeOf(result: CoverageResult, specPath: string): RulesCoverageOutcome {
+  if (result.absentFromSpec.length > 0) {
+    return { exitCode: 1, message: `rules-coverage failed: ${specPath} lacks code-level rules ${result.absentFromSpec.join(', ')}` };
+  }
+  const summary = `rules proven ${result.proven}/${result.rules.length}, pending ${result.pending.length}`;
+  if (result.missing.length > 0) {
+    return { exitCode: 1, message: `${summary}; unproven: ${result.missing.join(', ')}` };
+  }
+  return { exitCode: 0, message: summary };
+}
+
+/**
+ * Extracts a human-readable reason from a thrown value.
+ * @param error - Thrown value.
+ * @returns The error message, or the value as text.
+ */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * Runs the check.
  * @param options - Run options.
  * @param fs - File system.
- * @returns Exit code and summary; never throws for expected failures.
+ * @returns Exit code and summary; never throws.
  */
 export async function runRulesCoverage(options: RulesCoverageOptions, fs: RulesFileSystem): Promise<RulesCoverageOutcome> {
   try {
@@ -97,15 +127,25 @@ export async function runRulesCoverage(options: RulesCoverageOptions, fs: RulesF
     const allow =
       options.allowMissingPath === undefined ? new Set<string>() : parseAllowList(await fs.readText(options.allowMissingPath));
     const result = checkCoverage(specRules, proofs, allow);
-    await fs.writeText(options.outPath, renderReport(result));
-    const proven = result.rules.length - result.missing.length - result.pending.length;
-    const summary = `rules proven ${proven}/${result.rules.length}, pending ${result.pending.length}`;
-    if (result.missing.length > 0) {
-      return { exitCode: 1, message: `${summary}; unproven: ${result.missing.join(', ')}` };
-    }
-    return { exitCode: 0, message: summary };
+    await fs.writeText(options.outPath, renderReport(result, options.specPath));
+    return outcomeOf(result, options.specPath);
   } catch (error: unknown) {
-    const reason = error instanceof MalformedReportError || error instanceof Error ? error.message : String(error);
-    return { exitCode: 1, message: `rules-coverage failed: ${reason}` };
+    return { exitCode: 1, message: `rules-coverage failed: ${reasonOf(error)}` };
   }
+}
+
+/**
+ * Command-line entry: parses arguments and runs the check, never throwing.
+ * @param argv - Arguments after the script name.
+ * @param fs - File system.
+ * @returns The outcome.
+ */
+export async function runFromArgs(argv: readonly string[], fs: RulesFileSystem): Promise<RulesCoverageOutcome> {
+  let options: RulesCoverageOptions;
+  try {
+    options = parseArgs(argv);
+  } catch (error: unknown) {
+    return { exitCode: 1, message: `rules-coverage failed: ${reasonOf(error)}` };
+  }
+  return runRulesCoverage(options, fs);
 }
