@@ -207,6 +207,29 @@ describe('command line: exit codes and errors', () => {
   });
 });
 
+describe('command line: top-level commands', () => {
+  it('[WL-35] runs an operation without action as `warlog <group>`', async () => {
+    const top: OperationDefinition = { ...fixtureOperation('fixture_value'), name: 'top_value', group: 'top', action: '' };
+    const ran = await run(['top', '--name', 'x'], undefined, [top]);
+    expect(ran).toMatchObject({ code: 0, out: 'x\n' });
+  });
+
+  it('[WL-37] documents a top-level command and lists it in the root help', async () => {
+    const top: OperationDefinition = { ...fixtureOperation('fixture_value'), name: 'top_value', group: 'top', action: '' };
+    const help = await run(['top', '--help'], undefined, [top]);
+    expect(help.out).toContain('Usage: warlog top [options]');
+    expect(help.out).toContain('(warlog top --file input.yaml)');
+    expect((await run(['--help'], undefined, [top])).out).toContain('top');
+  });
+
+  it('[WL-39] exits 3 on an extra argument to a top-level command', async () => {
+    const top: OperationDefinition = { ...fixtureOperation('fixture_value'), name: 'top_value', group: 'top', action: '' };
+    const { code, err } = await run(['top', 'extra'], undefined, [top]);
+    expect(code).toBe(3);
+    expect(err).toContain('reason: too_many_arguments');
+  });
+});
+
 describe('command line: help, version and mcp', () => {
   it('[WL-37] shows help at root, group and operation level', async () => {
     const root = await run(['--help']);

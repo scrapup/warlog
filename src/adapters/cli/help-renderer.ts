@@ -2,6 +2,7 @@
  * Operation help (WL-37): description, usage, a parameter table (flag, type, required, default,
  * description) and an example input file, all derived from the registry entry.
  */
+import { commandWords } from '../../core/mediator/operation-definition.ts';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import { stringifyYaml } from '../../core/storage/yaml-codec.ts';
 import { COMMON_OPTIONS, HELP_OPTION } from './common-options.ts';
@@ -56,11 +57,12 @@ function defaultText(spec: FieldSpec): string {
  * @returns Help text.
  */
 export function renderOperationHelp(def: OperationDefinition): string {
+  const path = commandWords(def).join(' ');
   const specs = fieldSpecs(def.input);
   const params = specs.map((s) => [flagText(s), s.typeLabel, s.required ? 'yes' : 'no', defaultText(s), s.description]);
   const example = stringifyYaml(def.examples[0] ?? {}).trimEnd();
   return [
-    `Usage: warlog ${def.group} ${def.action} [options]`,
+    `Usage: warlog ${path} [options]`,
     '',
     def.description,
     '',
@@ -70,7 +72,7 @@ export function renderOperationHelp(def: OperationDefinition): string {
     'Options:',
     ...columns([...COMMON_OPTIONS, HELP_OPTION].map((o) => [o.flags, o.description])),
     '',
-    `Example input file (warlog ${def.group} ${def.action} --file input.yaml):`,
+    `Example input file (warlog ${path} --file input.yaml):`,
     ...example.split('\n').map((line) => `  ${line}`),
     '',
   ].join('\n');

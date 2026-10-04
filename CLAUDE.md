@@ -33,7 +33,13 @@ behaviors ErrorMapping → Context → Validation → SecretGuard → Activity, 
 `src/adapters/mcp` (low-level SDK `Server`, one tool per registry entry), `src/adapters/cli`
 (commander program generated from the registry: flags, `--file`, `--json-input`, `--validate`,
 help, exit codes), `src/compose/**` (composition roots) and `src/domain/operations.ts` (product
-registry content, empty until US-97; field names reserved by the interfaces are rejected by the registry). Test doubles live in `test/support/fakes`; fixture
+registry content; field names reserved by the interfaces are rejected by the registry). Index (US-96):
+`src/core/ports/store-view.port.ts` (read-only `StoreView` and `IndexSource` seen by operations),
+`src/core/index` (`IndexBuilder` scans both roots with bounded concurrency, never following links
+and refusing files above 2 MiB; `StoreIndex` view with relations, pending links and excluded
+files; `WatcherService` with per-root rescan fallback; `IndexProvider` — lazy point reads in the
+CLI, live index with watcher in the MCP server, `load: point` enforced in both) and
+`src/domain/health` (`doctor`). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

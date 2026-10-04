@@ -167,6 +167,14 @@ describe('OperationRegistry', () => {
     },
   );
 
+  it.each([['mcp'], ['help']])('[WL-35] rejects an operation group named like the built-in command %s', (group) => {
+    expect(() => new OperationRegistry([{ ...base, group }])).toThrow(expect.objectContaining({ code: 'INTERNAL', message: expect.stringContaining(`group ${group} is a reserved command name`) }));
+  });
+
+  it('[WL-35] rejects a top-level command named like an operation group', () => {
+    expect(() => new OperationRegistry([base, { ...base, name: 'top', action: '' }])).toThrow(expect.objectContaining({ code: 'INTERNAL', details: { group: base.group } }));
+  });
+
   it('accepts a schema made strict by the registry check', () => {
     expect(() => new OperationRegistry([{ ...base, name: 'loose', action: 'loose', input: z.object({ a: z.string() }), examples: [{ a: 'x' }] }])).not.toThrow();
   });

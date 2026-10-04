@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { productOperations } from '../../src/domain/operations.ts';
+import { MemoryFileSystem } from '../support/fakes/memory-file-system.ts';
+import { RecordingLogger } from '../support/fakes/simple-fakes.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import type { IsolatedEnv } from '../support/isolated-env.ts';
-import { connectMcp } from '../support/mcp-client.ts';
+import { connectMcp, resultText } from '../support/mcp-client.ts';
 import type { McpSession } from '../support/mcp-client.ts';
 import { packAndInstall } from '../support/packed-package.ts';
 import type { InstalledPackage } from '../support/packed-package.ts';
@@ -37,7 +39,13 @@ function mcp(): McpSession {
 describe('warlog mcp from the packed tarball', () => {
   it('[WL-35] lists exactly the product registry', async () => {
     const { tools } = await mcp().client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(productOperations().map((d) => d.name).sort());
+    expect(tools.map((t) => t.name).sort()).toEqual(productOperations({ fs: new MemoryFileSystem(), logger: new RecordingLogger() }).map((d) => d.name).sort());
+  }, 30_000);
+
+  it('[WL-45] answers doctor through MCP with a healthy report on an empty store', async () => {
+    const result = await mcp().client.callTool({ name: 'doctor', arguments: {} });
+    expect(result.isError ?? false).toBe(false);
+    expect(resultText(result)).toContain('healthy: true');
   }, 30_000);
 
   it('[WL-40] answers an unknown tool with a stable error', async () => {

@@ -1,0 +1,31 @@
+/**
+ * `doctor` (WL-45): health report of the store. CLI `warlog doctor`, MCP tool `doctor`.
+ */
+import { z } from 'zod';
+import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
+import type { Logger } from '../../core/ports/logger.port.ts';
+import { DoctorHandler } from './doctor.handler.ts';
+
+/** Input schema (no parameters). */
+const DOCTOR_INPUT = z.object({});
+
+/**
+ * Builds the definition.
+ * @param logger - Logger for failed probes.
+ * @returns The `doctor` operation.
+ */
+export function doctorOperation(logger: Logger): OperationDefinition {
+  return {
+    name: 'doctor',
+    group: 'doctor',
+    action: '',
+    kind: 'query',
+    input: DOCTOR_INPUT,
+    description:
+      'Report conflict copies, merge-conflicted and invalid files, pending links and stale temp files (document references and memory review are reported as not_checked until available). Never repairs anything.',
+    examples: [{}],
+    defaultFormat: 'yaml',
+    load: 'full',
+    handler: new DoctorHandler(logger),
+  };
+}

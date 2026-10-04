@@ -5,9 +5,10 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
-import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../ports/file-system.port.ts';
+import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock, TreeEntry } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
 import { acquireFileLock, codeOf } from './node-file-lock.ts';
+import { listTreeAt, readBounded, statWith } from './node-file-reads.ts';
 
 /** Tunables of {@link NodeFileSystem} (defaults suit production; tests shorten them). */
 export interface NodeFileSystemOptions {
@@ -137,20 +138,41 @@ export class NodeFileSystem implements FileSystem {
   }
 
   /**
+   * Lists every descendant of a directory with its kind.
+   * @param path - Directory.
+   * @returns Entries; `[]` when the directory does not exist.
+   */
+  async listTree(path: string): Promise<TreeEntry[]> {
+    return listTreeAt(path);
+  }
+
+  /**
+   * Reads a file of at most `maxBytes` in 64 KiB chunks (one read for a small file); a final
+   * link is refused where `O_NOFOLLOW` exists.
+   * @param path - File path.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` above the limit.
+   */
+  async readFileBounded(path: string, maxBytes: number): Promise<string | undefined> {
+    return readBounded(path, maxBytes);
+  }
+
+  /**
    * Reads entry metadata.
    * @param path - Entry path.
    * @returns Metadata or `undefined` when missing (including below a file: ENOTDIR).
    */
   async stat(path: string): Promise<FileStat | undefined> {
-    try {
-      const s = await fs.stat(path);
-      return { isDirectory: s.isDirectory(), size: s.size, mtimeMs: s.mtimeMs };
-    } catch (error: unknown) {
-      if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
-        return undefined;
-      }
-      throw error;
-    }
+    return statWith(() => fs.stat(path));
+  }
+
+  /**
+   * Reads entry metadata without following a final symbolic link.
+   * @param path - Entry path.
+   * @returns Metadata or `undefined` when missing.
+   */
+  async lstat(path: string): Promise<FileStat | undefined> {
+    return statWith(() => fs.lstat(path));
   }
 
   /**

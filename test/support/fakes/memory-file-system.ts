@@ -3,36 +3,32 @@
  */
 import { WarlogError } from '../../../src/core/errors/warlog-error.ts';
 import { compareCodeUnits } from '../../../src/core/security/compare.ts';
-import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../../../src/core/ports/file-system.port.ts';
+import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock, TreeEntry } from '../../../src/core/ports/file-system.port.ts';
+import { PathMap, norm } from './path-map.ts';
+import { PathSet } from './path-set.ts';
 
-/**
- * Normalizes a path to forward slashes without a trailing slash.
- * @param path - Raw path.
- * @returns Normalized path.
- */
-export function norm(path: string): string {
-  const p = path.split('\\').join('/');
-  return p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p;
-}
+export { norm } from './path-map.ts';
 
 /** In-memory file system with optional failure injection. */
 export class MemoryFileSystem implements FileSystem {
   /** Files by normalized path. */
-  readonly files = new Map<string, string>();
+  readonly files = new PathMap<string>();
   /** Explicit directories. */
-  readonly dirs = new Set<string>();
+  readonly dirs = new PathSet();
   /** Symbolic links: link path → target path. */
-  readonly links = new Map<string, string>();
+  readonly links = new PathMap<string>();
   /** Held locks. */
-  readonly locks = new Set<string>();
+  readonly locks = new PathSet();
   /** Modification times by path. */
-  readonly mtimes = new Map<string, number>();
+  readonly mtimes = new PathMap<number>();
   /** Paths whose atomic write fails (simulated crash before rename). */
-  readonly failWrites = new Set<string>();
+  readonly failWrites = new PathSet();
   /** Paths whose append fails. */
-  readonly failAppends = new Set<string>();
+  readonly failAppends = new PathSet();
   /** Number of `readDir` calls (to assert point loading). */
   readDirCalls = 0;
+  /** Paths whose reads fail with `EACCES`. */
+  failReads = new PathSet();
 
   /**
    * Seeds files.
@@ -50,6 +46,9 @@ export class MemoryFileSystem implements FileSystem {
    * @returns Content.
    */
   async readFile(path: string): Promise<string> {
+    if (this.failReads.has(this.resolve(path))) {
+      throw Object.assign(new Error(`EACCES: ${path}`), { code: 'EACCES' });
+    }
     const content = this.files.get(this.resolve(path));
     if (content === undefined) {
       throw new WarlogError('NOT_FOUND', `${path} not found`, { path });
@@ -96,7 +95,7 @@ export class MemoryFileSystem implements FileSystem {
     this.readDirCalls += 1;
     const prefix = `${this.resolve(path)}/`;
     const out = new Set<string>();
-    for (const key of [...this.files.keys(), ...this.dirs]) {
+    for (const key of [...this.files.keys(), ...this.dirs, ...this.links.keys()]) {
       if (key.startsWith(prefix)) {
         const rel = key.slice(prefix.length);
         if (options.recursive === true) {
@@ -119,10 +118,53 @@ export class MemoryFileSystem implements FileSystem {
     const p = this.resolve(path);
     const content = this.files.get(p);
     if (content !== undefined) {
-      return { isDirectory: false, size: Buffer.byteLength(content), mtimeMs: this.mtimes.get(p) ?? 0 };
+      return { isDirectory: false, isFile: true, isSymbolicLink: false, size: Buffer.byteLength(content), mtimeMs: this.mtimes.get(p) ?? 0 };
     }
     const isDir = this.dirs.has(p) || [...this.files.keys()].some((k) => k.startsWith(`${p}/`));
-    return isDir ? { isDirectory: true, size: 0, mtimeMs: 0 } : undefined;
+    return isDir ? { isDirectory: true, isFile: false, isSymbolicLink: false, size: 0, mtimeMs: 0 } : undefined;
+  }
+
+  /**
+   * Lists every descendant with its kind.
+   * @param path - Directory.
+   * @returns Entries.
+   */
+  async listTree(path: string): Promise<TreeEntry[]> {
+    const names = await this.readDir(path, { recursive: true });
+    const base = this.resolve(path);
+    return names.map((relative) => {
+      const full = `${norm(path)}/${relative}`;
+      if (this.links.has(full)) {
+        return { relative, kind: 'symlink' as const };
+      }
+      return { relative, kind: this.files.has(`${base}/${relative}`) ? ('file' as const) : ('directory' as const) };
+    });
+  }
+
+  /**
+   * Reads a file within a size limit; a link is refused (`ELOOP`, as with `O_NOFOLLOW`).
+   * @param path - Path.
+   * @param maxBytes - Limit.
+   * @returns Content, or `undefined` above the limit.
+   */
+  async readFileBounded(path: string, maxBytes: number): Promise<string | undefined> {
+    if (this.links.has(path)) {
+      throw Object.assign(new Error(`ELOOP: ${path}`), { code: 'ELOOP' });
+    }
+    const text = await this.readFile(path);
+    return Buffer.byteLength(text) > maxBytes ? undefined : text;
+  }
+
+  /**
+   * Reads metadata without following a final link (a path in {@link links} is a link).
+   * @param path - Path.
+   * @returns Metadata or `undefined`.
+   */
+  async lstat(path: string): Promise<FileStat | undefined> {
+    if (this.links.has(norm(path))) {
+      return { isDirectory: false, isFile: false, isSymbolicLink: true, size: 0, mtimeMs: 0 };
+    }
+    return this.stat(path);
   }
 
   /**

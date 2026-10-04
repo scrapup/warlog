@@ -7,14 +7,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import type { ExecuteDeps } from '../adapters/shared/execute-operation.ts';
 import { LocalMachineId } from '../core/adapters/local-machine-id.ts';
 import { NodeFileSystem } from '../core/adapters/node-file-system.ts';
+import { NodeRecursiveWatcher } from '../core/adapters/node-recursive-watcher.ts';
+import { NodeTimers } from '../core/adapters/node-timers.ts';
 import { ProcessEnv } from '../core/adapters/process-env.ts';
 import { StderrJsonLogger, parseLogLevel } from '../core/adapters/stderr-json-logger.ts';
 import { SystemClock } from '../core/adapters/system-clock.ts';
 import { UlidGenerator } from '../core/adapters/ulid-generator.ts';
 import type { Redaction } from '../core/errors/path-redactor.ts';
+import type { WarlogError } from '../core/errors/warlog-error.ts';
 import { GitCliClient } from '../core/git/git-cli-client.ts';
 import { resolveGitBinary } from '../core/git/git-binary.ts';
 import { RepoLocator } from '../core/git/repo-locator.ts';
+import { IndexBuilder } from '../core/index/index-builder.ts';
+import { IndexProvider } from '../core/index/index-provider.ts';
+import type { IndexMode } from '../core/index/index-provider.ts';
+import { WatcherService } from '../core/index/watcher-service.ts';
 import { Mediator } from '../core/mediator/mediator.ts';
 import { OperationRegistry } from '../core/mediator/operation-registry.ts';
 import { buildPipeline } from '../core/mediator/pipeline-factory.ts';
@@ -34,6 +41,22 @@ import type { OperationsFactory } from '../domain/operations.ts';
 export interface Core extends ExecuteDeps {
   /** Package version. */
   readonly version: string;
+  /**
+   * Builds the live index of the working directory's roots now (MCP start-up, plan §3.7).
+   * @returns When built.
+   * @throws {WarlogError} `INTERNAL` in the command-line profile; any error of the build.
+   */
+  warmIndex(): Promise<void>;
+  /** Stops the live index's watcher (MCP shutdown). */
+  close(): void;
+}
+
+/** Options of {@link composeCore}. */
+export interface ComposeOptions {
+  /** Registry content factory (default: the product operations). */
+  readonly operations?: OperationsFactory;
+  /** Process profile: `lazy` (command line, default) or `live` (MCP server with watcher). */
+  readonly index?: IndexMode;
 }
 
 /** Fields read from `package.json`. */
@@ -84,10 +107,11 @@ export function composeLogger(env: Env): Logger {
 
 /**
  * Wires the call path.
- * @param operations - Registry content factory (default: the product operations).
+ * @param options - Registry content and process profile.
  * @returns The core.
  */
-export function composeCore(operations: OperationsFactory = productOperations): Core {
+export function composeCore(options: ComposeOptions = {}): Core {
+  const operations = options.operations ?? productOperations;
   const env = new ProcessEnv();
   const logger = composeLogger(env);
   const fs = new NodeFileSystem({ logger });
@@ -96,9 +120,37 @@ export function composeCore(operations: OperationsFactory = productOperations): 
   const guard = new PathGuard(fs);
   const machine = new LocalMachineId({ fs, env, random: (count) => randomBytes(count) });
   const resolver = new StoreRootsResolver({ fs, env, git, guard, locator: new RepoLocator(git) });
-  const contexts = new StoreContextFactory({ resolver, env, git, clock, ids: new UlidGenerator(clock), machine });
+  const builder = new IndexBuilder({ fs, clock });
+  const indexes = new IndexProvider({
+    fs,
+    builder,
+    guard,
+    logger,
+    mode: options.index ?? 'lazy',
+    onBuilt: (index, roots) => {
+      const watcher = new WatcherService({ watcher: new NodeRecursiveWatcher(), builder, index, roots, logger, timers: new NodeTimers(), clock });
+      watcher.start();
+      return () => watcher.stop();
+    },
+  });
+  const contexts = new StoreContextFactory({
+    resolver,
+    env,
+    git,
+    clock,
+    ids: new UlidGenerator(clock),
+    machine,
+    indexes: (roots, request) => indexes.sourceFor(roots, request.load, request.operation),
+  });
   const registry = new OperationRegistry(operations({ fs, logger }));
   const redactions = staticRedactions(env);
   const behaviors = buildPipeline({ logger, redactions, contexts, secretGuard: new SecretGuard(), activity: new ActivityLog({ fs, clock, machine, guard, logger }) });
-  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), logger, redactions, version: readVersion() };
+  /**
+   * Builds the index of the working directory's roots.
+   * @returns When built.
+   */
+  const warmIndex = async (): Promise<void> => {
+    await indexes.ensure(await resolver.resolve(env.cwd()));
+  };
+  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), logger, redactions, version: readVersion(), warmIndex, close: () => indexes.close() };
 }

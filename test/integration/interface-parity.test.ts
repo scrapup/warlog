@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fieldSpecs } from '../../src/adapters/cli/flag-mapper.ts';
+import { commandWords } from '../../src/core/mediator/operation-definition.ts';
 import { FIXTURE_OPERATIONS } from '../support/fixture-operations.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import type { IsolatedEnv } from '../support/isolated-env.ts';
@@ -94,7 +95,7 @@ describe('interface parity over the full registry', () => {
   }, 30_000);
 
   it.each(OPERATIONS)('[WL-37] %s documents every parameter in its command-line help', (_name, def) => {
-    const help = cli([def.group, def.action, '--help']);
+    const help = cli([...commandWords(def), '--help']);
     expect(help.status).toBe(0);
     fieldSpecs(def.input).forEach((s) => expect(help.stdout).toContain(s.kind === 'complex' ? `(${s.key}:` : `--${s.flag}`));
   }, 30_000);
@@ -103,7 +104,7 @@ describe('interface parity over the full registry', () => {
     '[WL-35] [WL-40] %s returns the same normalized output and error through both interfaces',
     async (_name, def, example) => {
       const viaMcp = await setup().mcp.client.callTool({ name: def.name, arguments: { ...example } });
-      const viaCli = cli([def.group, def.action, '--json-input', JSON.stringify(example)]);
+      const viaCli = cli([...commandWords(def), '--json-input', JSON.stringify(example)]);
       expect(viaCli.status === 0).toBe(viaMcp.isError !== true);
       expect(normalize(viaCli.status === 0 ? viaCli.stdout : viaCli.stderr)).toBe(normalize(resultText(viaMcp)));
     },

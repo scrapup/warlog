@@ -8,8 +8,9 @@ import type { Env } from '../ports/env.port.ts';
 import type { GitClient } from '../ports/git-client.port.ts';
 import type { IdGenerator } from '../ports/id-generator.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
+import type { IndexSource } from '../ports/store-view.port.ts';
 import type { StoreRoots } from '../storage/store-roots.ts';
-import type { OperationContext, OperationContextFactory } from './operation-context.ts';
+import type { ContextRequest, OperationContext, OperationContextFactory } from './operation-context.ts';
 
 /** Resolves the store roots of a directory. */
 export interface RootsResolver {
@@ -21,6 +22,9 @@ export interface RootsResolver {
    */
   resolve(cwd: string): Promise<StoreRoots>;
 }
+
+/** Gives the index source of a call (roots, then the operation's load mode). */
+export type IndexSourceFactory = (roots: StoreRoots, request: ContextRequest) => IndexSource;
 
 /** Collaborators of {@link StoreContextFactory}. */
 export interface StoreContextFactoryDeps {
@@ -36,6 +40,8 @@ export interface StoreContextFactoryDeps {
   readonly ids: IdGenerator;
   /** Machine id. */
   readonly machine: MachineIdProvider;
+  /** Index source per roots. */
+  readonly indexes: IndexSourceFactory;
 }
 
 /** Builds contexts from the process environment. */
@@ -53,10 +59,11 @@ export class StoreContextFactory implements OperationContextFactory {
 
   /**
    * Creates the context of one call.
+   * @param request - Operation and load mode.
    * @returns The context.
    * @throws {WarlogError} When the store roots cannot be resolved.
    */
-  async create(): Promise<OperationContext> {
+  async create(request: ContextRequest): Promise<OperationContext> {
     const cwd = this.deps.env.cwd();
     const roots = await this.deps.resolver.resolve(cwd);
     const project = this.deps.env.get('WARLOG_PROJECT');
@@ -67,6 +74,7 @@ export class StoreContextFactory implements OperationContextFactory {
       machine: this.deps.machine,
       defaultProject: project === undefined || project.trim() === '' ? undefined : project,
       currentBranch: () => this.deps.git.currentBranch(cwd),
+      index: this.deps.indexes(roots, request),
       activity: [],
       warnings: [...roots.warnings],
     };

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+import { isolatedEnv } from '../support/isolated-env.ts';
 import { packAndInstall } from '../support/packed-package.ts';
 import type { InstalledPackage } from '../support/packed-package.ts';
 import { runNode } from '../support/run-node.ts';
@@ -38,6 +39,18 @@ describe('warlog command line from the packed tarball', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Usage: warlog');
     expect(result.stderr).toContain('mcp');
+  }, 30_000);
+
+  it('[WL-45] runs doctor on an empty store as a healthy report', () => {
+    const iso = isolatedEnv();
+    try {
+      const result = runNode([bin(), 'doctor'], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toContain('healthy: true');
+    } finally {
+      iso.dispose();
+    }
   }, 30_000);
 
   it('[WL-37] shows the root help with exit 0', () => {

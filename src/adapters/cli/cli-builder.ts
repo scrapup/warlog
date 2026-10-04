@@ -4,6 +4,7 @@
  */
 import { Command, CommanderError, Option } from 'commander';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { isTopLevel } from '../../core/mediator/operation-definition.ts';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import { executeOperation, formatError, toLoggedFailure } from '../shared/execute-operation.ts';
 import type { ExecuteDeps, ExecuteOutcome } from '../shared/execute-operation.ts';
@@ -141,12 +142,13 @@ async function runOperation(op: OperationCommand, bindings: readonly FlagBinding
 }
 
 /**
- * Adds the command of one operation to its group.
- * @param group - Group command.
+ * Adds the command of one operation to its parent (its group, or the program for a top-level command).
+ * @param parent - Parent command.
  * @param op - Operation command.
  */
-function addOperation(group: Command, op: OperationCommand): void {
-  const command = group.command(op.def.action).description(op.def.description).allowExcessArguments(false);
+function addOperation(parent: Command, op: OperationCommand): void {
+  const name = isTopLevel(op.def) ? op.def.group : op.def.action;
+  const command = parent.command(name).description(op.def.description).allowExcessArguments(false);
   command.configureHelp({ formatHelp: () => renderOperationHelp(op.def) });
   const bindings = fieldSpecs(op.def.input)
     .filter((spec) => spec.kind !== 'complex')
@@ -178,6 +180,10 @@ function buildProgram(deps: CliDeps, state: RunState): Command {
     .configureOutput({ writeOut: (t) => deps.io.stdout(t), writeErr: (t) => deps.io.stderr(t), outputError: () => undefined });
   const groups = new Map<string, Command>();
   for (const def of deps.registry.list()) {
+    if (isTopLevel(def)) {
+      addOperation(program, { deps, def, state });
+      continue;
+    }
     const group = groups.get(def.group) ?? program.command(def.group).description(`${def.group} operations`);
     groups.set(def.group, group);
     addOperation(group, { deps, def, state });

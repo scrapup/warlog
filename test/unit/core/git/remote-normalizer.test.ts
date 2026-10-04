@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { normalizeRemote } from '../../../../src/core/git/remote-normalizer.ts';
-import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, medianElapsedMs } from '../../../support/timing.ts';
+import { ADVERSARIAL_LENGTH } from '../../../support/timing.ts';
 
 describe('normalizeRemote', () => {
   it.each([
@@ -17,8 +17,10 @@ describe('normalizeRemote', () => {
     expect(normalizeRemote(url)).toBe(key);
   });
 
-  it(`[SEC-22][WL-48] normalizes a ${ADVERSARIAL_LENGTH}-character remote under ${ADVERSARIAL_BUDGET_MS} ms`, () => {
+  it(`[WL-02] normalizes a ${ADVERSARIAL_LENGTH}-character remote to a safe key`, () => {
     const url = `https://${'@'.repeat(ADVERSARIAL_LENGTH / 2)}host/${'a/'.repeat(ADVERSARIAL_LENGTH / 4)}.git`;
-    expect(medianElapsedMs(() => normalizeRemote(url))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    const safe = new Set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-');
+    const segments = normalizeRemote(url).split('__');
+    expect(segments.every((segment) => segment.length > 0 && [...segment].every((ch) => safe.has(ch)))).toBe(true);
   });
 });

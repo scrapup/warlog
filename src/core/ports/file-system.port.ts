@@ -7,6 +7,10 @@ import type { WarlogError } from '../errors/warlog-error.ts';
 export interface FileStat {
   /** `true` for a directory. */
   readonly isDirectory: boolean;
+  /** `true` for a regular file. */
+  readonly isFile: boolean;
+  /** `true` for a symbolic link (only from {@link FileSystem.lstat}). */
+  readonly isSymbolicLink: boolean;
   /** Size in bytes. */
   readonly size: number;
   /** Last modification time in epoch milliseconds. */
@@ -17,6 +21,17 @@ export interface FileStat {
 export interface ReadDirOptions {
   /** Whether to list every descendant (relative `/`-separated paths). */
   readonly recursive?: boolean;
+}
+
+/** Kind of a listed entry (links are reported, never followed). */
+export type EntryKind = 'file' | 'directory' | 'symlink' | 'other';
+
+/** One entry of a recursive listing. */
+export interface TreeEntry {
+  /** Path relative to the listed directory, `/`-separated. */
+  readonly relative: string;
+  /** Entry kind. */
+  readonly kind: EntryKind;
 }
 
 /** Releases an exclusive lock. */
@@ -59,11 +74,31 @@ export interface FileSystem {
    */
   readDir(path: string, options?: ReadDirOptions): Promise<string[]>;
   /**
+   * Lists every descendant of a directory with its kind (one call, no per-entry stat).
+   * @param path - Directory path.
+   * @returns Entries; `[]` when the directory does not exist.
+   */
+  listTree(path: string): Promise<TreeEntry[]>;
+  /**
+   * Reads a UTF-8 file of at most `maxBytes` without following a final link where the platform
+   * allows it.
+   * @param path - File path.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` when the file is larger than the limit.
+   */
+  readFileBounded(path: string, maxBytes: number): Promise<string | undefined>;
+  /**
    * Reads entry metadata.
    * @param path - Entry path.
    * @returns The metadata, or `undefined` when the entry does not exist.
    */
   stat(path: string): Promise<FileStat | undefined>;
+  /**
+   * Reads entry metadata without following a final symbolic link.
+   * @param path - Entry path.
+   * @returns Metadata, or `undefined` when missing.
+   */
+  lstat(path: string): Promise<FileStat | undefined>;
   /**
    * Creates a directory and its parents (no error when it exists).
    * @param path - Directory path.

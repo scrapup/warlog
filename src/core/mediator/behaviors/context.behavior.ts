@@ -1,5 +1,6 @@
 /**
- * Builds the request context (roots, clock, ids, machine, defaults) before validation.
+ * Builds the request context (roots, clock, ids, machine, defaults, index) before validation;
+ * the factory receives the operation's load mode (plan §3.7).
  */
 import type { OperationContextFactory } from '../operation-context.ts';
 import type { OperationResult } from '../operation-result.ts';
@@ -27,7 +28,7 @@ export class ContextBehavior implements Behavior {
    * @returns The result.
    */
   async handle(request: PipelineRequest, next: Next): Promise<OperationResult | undefined> {
-    request.context = await this.factory.create();
+    request.context = await this.factory.create({ operation: request.definition.name, load: request.definition.load });
     return next();
   }
 }

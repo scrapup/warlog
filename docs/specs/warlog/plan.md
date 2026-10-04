@@ -204,8 +204,9 @@ generated store.
 | MCP server (`warlog mcp`, long-lived) | Full index at start + watcher | Paid once per session; every query served from memory |
 | CLI (short-lived, called by hooks/scripts) | **On demand**: point operations (`var_get`, `task_get`, `story_get`, `note_*` by id, `doc_get`, `doc_toc`, `questionnaire_get`, `response_get`) read only the files they need (path derived from id/name + scope); aggregate operations (`tracker_*`, `*_list`, `*_search`, `memory_recall`, `playbook`, `patterns_for`, `trace`, `links_of`, `doctor`, `doc_history`) build the full index first | Avoids the 5 s scan on every hook call |
 
-Each operation declares `load: point | full` in the registry; the CLI adapter honors it, the MCP
-adapter ignores it (index always loaded). Write operations in the CLI load the target entity plus the
+Each operation declares `load: point | full` in the registry; a `point` operation may not request the
+full index in either interface (refused as `INTERNAL`); the CLI uses it to avoid full scans, the MCP
+server serves both from the live index. Write operations in the CLI load the target entity plus the
 entities they validate (dependencies, parent) only.
 
 **Latency targets (benchmarks in CI, informative — spec SLA covers indexing only):** CLI
@@ -337,7 +338,7 @@ given (WL-12).
 
 | Aspect | Contract |
 |---|---|
-| Path | `warlog <group> <action>`; `warlog mcp` starts the server; `warlog doctor` |
+| Path | `warlog <group> <action>`; an operation with an empty action is a top-level command (`warlog doctor`); `mcp` and `help` are reserved command names; `warlog mcp` starts the server |
 | Flags | Generated from the zod schema: `--kebab-case`; arrays as repeated flags or comma lists; objects only via `--file` or `--json-input '<json>'` |
 | File input | `--file <path>` / `--file -`; `.yaml`/`.yml`/`.json`; `.md` → front matter = fields, body = `description`/`content`. Merge order: file < flags. Parsed with YAML 1.2; errors carry `file:line:col field: message` (WL-36) |
 | `--validate` | Runs Context + Validation + SecretGuard, skips handler; exit 0 or 3 |
