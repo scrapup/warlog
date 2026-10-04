@@ -33,6 +33,8 @@ export class MemoryFileSystem implements FileSystem {
   readonly failAppends = new Set<string>();
   /** Number of `readDir` calls (to assert point loading). */
   readDirCalls = 0;
+  /** Paths whose reads fail with `EACCES`. */
+  failReads = new Set<string>();
 
   /**
    * Seeds files.
@@ -50,6 +52,9 @@ export class MemoryFileSystem implements FileSystem {
    * @returns Content.
    */
   async readFile(path: string): Promise<string> {
+    if (this.failReads.has(this.resolve(path))) {
+      throw Object.assign(new Error(`EACCES: ${path}`), { code: 'EACCES' });
+    }
     const content = this.files.get(this.resolve(path));
     if (content === undefined) {
       throw new WarlogError('NOT_FOUND', `${path} not found`, { path });
