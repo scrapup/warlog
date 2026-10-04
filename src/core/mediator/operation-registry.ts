@@ -4,7 +4,7 @@
  */
 import { WarlogError } from '../errors/warlog-error.ts';
 import { compareCodeUnits } from '../security/compare.ts';
-import { commandWords } from './operation-definition.ts';
+import { commandWords, isTopLevel } from './operation-definition.ts';
 import type { OperationDefinition } from './operation-definition.ts';
 
 /**
@@ -22,6 +22,9 @@ function isSnakeCase(name: string): boolean {
  * start with `no_` (the command line reads `--no-x` as the negation of `--x`).
  */
 export const RESERVED_INPUT_KEYS: readonly string[] = ['format', 'fields', 'file', 'json_input', 'validate', 'help'];
+
+/** Command names owned by the command line itself; no operation group may use them. */
+export const RESERVED_COMMAND_NAMES: readonly string[] = ['mcp', 'help'];
 
 /**
  * Lists input keys that clash with the interfaces.
@@ -43,6 +46,7 @@ function checkDefinition(def: OperationDefinition): void {
   if (!isSnakeCase(def.name)) problems.push('name must be snake_case');
   if (def.description.trim() === '') problems.push('description is empty');
   if (def.examples.length === 0) problems.push('at least one example is required');
+  if (RESERVED_COMMAND_NAMES.includes(def.group)) problems.push(`group ${def.group} is a reserved command name`);
   const reserved = reservedKeys(def);
   if (reserved.length > 0) problems.push(`fields reuse reserved names: ${reserved.join(', ')}`);
   def.examples.forEach((example, i) => {
@@ -74,8 +78,8 @@ export class OperationRegistry {
       this.byName.set(def.name, def);
       paths.add(path);
     }
-    const topLevel = definitions.filter((d) => d.action === '').map((d) => d.group);
-    const clash = topLevel.find((group) => definitions.some((d) => d.group === group && d.action !== ''));
+    const topLevel = definitions.filter(isTopLevel).map((d) => d.group);
+    const clash = topLevel.find((group) => definitions.some((d) => d.group === group && !isTopLevel(d)));
     if (clash !== undefined) {
       throw new WarlogError('INTERNAL', `top-level command ${clash} is also an operation group`, { group: clash });
     }

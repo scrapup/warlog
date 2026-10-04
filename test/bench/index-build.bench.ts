@@ -10,6 +10,7 @@ import type { GeneratedStore } from '../support/store-generator.ts';
 
 /** Spec SLA: indexing ≤ 5 s for 10 000 files. */
 const SLA_MS = 5_000;
+/** Number of entity files generated for the benchmark. */
 const FILES = 10_000;
 
 let base = '';

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+import { isolatedEnv } from '../support/isolated-env.ts';
 import { packAndInstall } from '../support/packed-package.ts';
 import type { InstalledPackage } from '../support/packed-package.ts';
-import { isolatedEnv } from '../support/isolated-env.ts';
 import { runNode } from '../support/run-node.ts';
 
 let installed: InstalledPackage | undefined;
@@ -46,6 +46,7 @@ describe('warlog command line from the packed tarball', () => {
     try {
       const result = runNode([bin(), 'doctor'], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
       expect(result.status).toBe(0);
+      expect(result.stderr).toBe('');
       expect(result.stdout).toContain('healthy: true');
     } finally {
       iso.dispose();

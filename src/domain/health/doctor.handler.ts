@@ -1,18 +1,36 @@
 /**
  * Health report of the store (WL-45): lists what the User must resolve by hand and never repairs
- * anything. Each section is probed independently, so one failing probe does not hide the others.
+ * anything. Each section is probed independently, so one failing probe does not hide the others;
+ * sections whose checks arrive with later stories are reported as `not_checked` and do not count
+ * towards `healthy`.
  */
-import type { FileProblem } from '../../core/index/indexed-entity.ts';
-import type { StoreIndex } from '../../core/index/store-index.ts';
+import { errorFields } from '../../core/errors/error-fields.ts';
+import { toWarlogError } from '../../core/errors/warlog-error.ts';
 import type { OperationContext } from '../../core/mediator/operation-context.ts';
 import type { OperationHandler } from '../../core/mediator/operation-definition.ts';
 import type { OperationResult } from '../../core/mediator/operation-result.ts';
+import type { Logger } from '../../core/ports/logger.port.ts';
+import type { FileProblem, RootKind, StoreView } from '../../core/ports/store-view.port.ts';
 
 /** Age after which a temporary file is reported (1 hour). */
 export const STALE_TEMP_MS = 3_600_000;
 
+/** Milliseconds in a minute. */
+const MS_PER_MINUTE = 60_000;
+
+/** Value of a section whose checks are not implemented yet. */
+export const NOT_CHECKED = 'not_checked';
+
 /** Input of `doctor` (none). */
 export type DoctorInput = Record<string, never>;
+
+/** What a probe reads. */
+interface ProbeContext {
+  /** Store view. */
+  readonly view: StoreView;
+  /** Current time (ms). */
+  readonly now: number;
+}
 
 /** A section that failed to compute. */
 interface FailedSection {
@@ -20,73 +38,101 @@ interface FailedSection {
   readonly error: string;
 }
 
-/** A probe computing one section. */
-type Probe = (index: StoreIndex, now: number) => unknown[];
+/** A report entry locating a file. */
+interface LocatedEntry {
+  /** Root holding the file. */
+  readonly root: RootKind;
+  /** Path relative to the root (never absolute). */
+  readonly path: string;
+}
 
-/** A file located by root and relative path. */
-type Located = Pick<FileProblem, 'root' | 'relative'>;
+/** A probe computing one section (`NOT_CHECKED` until its story lands). */
+type Probe = (context: ProbeContext) => readonly unknown[] | typeof NOT_CHECKED;
+
+/** Section value in the report. */
+type Section = readonly unknown[] | typeof NOT_CHECKED | FailedSection;
 
 /**
- * Report entry of a file (relative path only: no local absolute paths in the output).
+ * Report entry of a file.
  * @param file - File.
  * @returns `{ root, path }`.
  */
-function located(file: Located): Record<string, unknown> {
+function located(file: Pick<FileProblem, 'root' | 'relative'>): LocatedEntry {
   return { root: file.root, path: file.relative };
 }
 
 /** Sections of the report, in output order. */
 const PROBES: Readonly<Record<string, Probe>> = {
-  conflict_copies: (index) => index.excluded.conflictCopies().map(located),
-  merge_conflicts: (index) =>
-    index.excluded
+  conflict_copies: ({ view }) => view.excluded.conflictCopies().map(located),
+  merge_conflicts: ({ view }) =>
+    view.excluded
       .invalidFiles()
       .filter((p) => p.reason === 'merge_conflict')
       .map(located),
-  invalid_files: (index) =>
-    index.excluded
+  invalid_files: ({ view }) =>
+    view.excluded
       .invalidFiles()
       .filter((p) => p.reason !== 'merge_conflict')
       .map((p) => ({ ...located(p), reason: p.reason })),
-  pending_links: (index) => index.pendingLinks().map((l) => ({ from: l.from, rel: l.rel, target: l.target })),
-  // Filled by US-102 (document references) and US-99 (memory review).
-  document_references: () => [],
-  memories_due_for_review: () => [],
-  stale_temp_files: (index, now) =>
-    index.excluded
+  pending_links: ({ view }) => view.pendingLinks().map((l) => ({ from: l.from, rel: l.rel, target: l.target })),
+  // Checked by US-102 (document references) and US-99 (memory review).
+  document_references: () => NOT_CHECKED,
+  memories_due_for_review: () => NOT_CHECKED,
+  stale_temp_files: ({ view, now }) =>
+    view.excluded
       .tempFiles()
-      .filter((t) => now - t.mtimeMs > STALE_TEMP_MS)
-      .map((t) => ({ ...located(t), age_minutes: Math.floor((now - t.mtimeMs) / 60_000) })),
+      .map((t) => ({ file: t, ageMs: now - t.mtimeMs }))
+      .filter(({ ageMs }) => ageMs > STALE_TEMP_MS)
+      .map(({ file, ageMs }) => ({ ...located(file), age_minutes: Math.floor(ageMs / MS_PER_MINUTE) })),
 };
 
 /**
- * Runs one probe.
- * @param probe - Probe.
- * @param index - View.
- * @param now - Current time (ms).
- * @returns Its entries, or the failure.
+ * Tells whether a section is checked and clean.
+ * @param section - Section value.
+ * @returns `true` for an empty list or a section not checked yet.
  */
-function run(probe: Probe, index: StoreIndex, now: number): unknown[] | FailedSection {
-  try {
-    return probe(index, now);
-  } catch {
-    return { error: 'INTERNAL' };
-  }
+function isClean(section: Section): boolean {
+  return section === NOT_CHECKED || (Array.isArray(section) && section.length === 0);
 }
 
 /** Builds the health report. */
 export class DoctorHandler implements OperationHandler<DoctorInput> {
+  /** Logger (codes only). */
+  private readonly logger: Logger;
+
+  /**
+   * Creates the handler.
+   * @param logger - Logger for failed probes.
+   */
+  constructor(logger: Logger) {
+    this.logger = logger;
+  }
+
   /**
    * Reports every category of problem found in the view.
    * @param _input - No input.
    * @param context - Request context.
-   * @returns An object with one list per section and `healthy`.
+   * @returns An object with `healthy` and one value per section.
    */
   async handle(_input: DoctorInput, context: OperationContext): Promise<OperationResult> {
-    const index = await context.index.full();
-    const now = context.clock.now().getTime();
-    const sections = Object.fromEntries(Object.entries(PROBES).map(([name, probe]) => [name, run(probe, index, now)]));
-    const healthy = Object.values(sections).every((s) => Array.isArray(s) && s.length === 0);
-    return { kind: 'object', value: { healthy, ...sections } };
+    const probeContext: ProbeContext = { view: await context.index.full(), now: context.clock.now().getTime() };
+    const sections = Object.fromEntries(Object.entries(PROBES).map(([name, probe]) => [name, this.run(name, probe, probeContext)]));
+    return { kind: 'object', value: { healthy: Object.values(sections).every(isClean), ...sections } };
+  }
+
+  /**
+   * Runs one probe; a failure is logged with codes only and reported by category.
+   * @param name - Section name.
+   * @param probe - Probe.
+   * @param probeContext - What the probe reads.
+   * @returns The section value.
+   */
+  private run(name: string, probe: Probe, probeContext: ProbeContext): Section {
+    try {
+      return probe(probeContext);
+    } catch (error: unknown) {
+      this.logger.log('error', 'doctor.probe_failed', { section: name, ...errorFields(error) });
+      return { error: toWarlogError(error).code };
+    }
   }
 }

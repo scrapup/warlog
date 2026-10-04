@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NodeFileSystem } from '../../../src/core/adapters/node-file-system.ts';
 import { NodeRecursiveWatcher } from '../../../src/core/adapters/node-recursive-watcher.ts';
-import { NODE_TIMERS } from '../../../src/core/adapters/node-timers.ts';
+import { NodeTimers } from '../../../src/core/adapters/node-timers.ts';
 import { SystemClock } from '../../../src/core/adapters/system-clock.ts';
 import { IndexBuilder } from '../../../src/core/index/index-builder.ts';
 import type { StoreIndex } from '../../../src/core/index/store-index.ts';
@@ -15,6 +15,7 @@ import { RecordingLogger } from '../../support/fakes/simple-fakes.ts';
 
 const M1 = '01J00000000000000000000M01';
 const M2 = '01J00000000000000000000M02';
+const READY = '01J00000000000000000000M00';
 
 const cleanups: (() => void)[] = [];
 
@@ -64,7 +65,7 @@ async function start(watchedGlobal?: string) {
   const { index } = await builder.build(roots);
   const logger = new RecordingLogger();
   const watchRoots: StoreRoots = watchedGlobal === undefined ? roots : { ...roots, global: join(base, watchedGlobal) };
-  const service = new WatcherService({ watcher: new NodeRecursiveWatcher(), builder, index, roots: watchRoots, logger, timers: NODE_TIMERS });
+  const service = new WatcherService({ watcher: new NodeRecursiveWatcher(), builder, index, roots: watchRoots, logger, timers: new NodeTimers(), clock: new SystemClock() });
   service.start();
   cleanups.push(() => {
     service.stop();
@@ -77,7 +78,13 @@ describe('watcher on the real file system', () => {
   it('[WL-06] shows an external write in the view within 1 s', async () => {
     const { index, roots } = await start();
     expect(index.get(M1)).toBeDefined();
-    await new Promise((r) => setTimeout(r, 100));
+    // Readiness handshake: rewrite a sentinel until the armed watch reports it.
+    const deadline = Date.now() + 5_000;
+    while (index.get(READY) === undefined && Date.now() < deadline) {
+      writeMemory(join(roots.global, 'global', 'memories'), READY);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(index.get(READY)).toBeDefined();
     writeMemory(join(roots.global, 'global', 'memories'), M2);
     expect(await waitFor(index, M2, 1_000)).toBeLessThanOrEqual(1_000);
   }, 10_000);

@@ -1,5 +1,7 @@
 /**
- * Test helper: measures synchronous execution time robustly (warm-up, median of runs).
+ * Test helper: measures synchronous execution time robustly (warm-up, fastest of several runs:
+ * interference from parallel test workers or coverage instrumentation only ever adds time, so the
+ * fastest run is the closest to the intrinsic cost).
  */
 
 /** Time budget of adversarial inputs (SEC-22). */
@@ -20,15 +22,14 @@ export function elapsedMs(fn: () => unknown): number {
 }
 
 /**
- * Runs a function once to warm up, then returns the median of `runs` timings.
+ * Runs a function once to warm up, then returns the fastest of `runs` timings.
  * @param fn - Function to time.
- * @param runs - Number of timed runs (odd).
- * @returns Median elapsed milliseconds.
+ * @param runs - Number of timed runs.
+ * @returns Fastest elapsed milliseconds.
  */
-export function medianElapsedMs(fn: () => unknown, runs = 3): number {
+export function fastestElapsedMs(fn: () => unknown, runs = 5): number {
   fn();
-  const samples = Array.from({ length: runs }, () => elapsedMs(fn)).sort((a, b) => a - b);
-  return samples[Math.floor(runs / 2)] ?? Number.POSITIVE_INFINITY;
+  return Math.min(...Array.from({ length: runs }, () => elapsedMs(fn)));
 }
 
 /**
@@ -37,11 +38,11 @@ export function medianElapsedMs(fn: () => unknown, runs = 3): number {
  * @param make - Builds an input of the given size.
  * @param run - Function under test.
  * @param size - Base size.
- * @returns `time(2·size) / time(size)` (medians).
+ * @returns `time(2·size) / time(size)` (fastest runs).
  */
 export function scalingRatio<T>(make: (size: number) => T, run: (input: T) => unknown, size: number): number {
   const small = make(size);
   const large = make(size * 2);
-  const base = Math.max(medianElapsedMs(() => run(small), 5), 0.05);
-  return medianElapsedMs(() => run(large), 5) / base;
+  const base = Math.max(fastestElapsedMs(() => run(small)), 0.05);
+  return fastestElapsedMs(() => run(large)) / base;
 }

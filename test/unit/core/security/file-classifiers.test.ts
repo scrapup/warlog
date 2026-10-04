@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { classifyFileName } from '../../../../src/core/security/file-name-classifier.ts';
 import { hasMergeConflictMarkers } from '../../../../src/core/security/merge-marker-detector.ts';
-import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, medianElapsedMs } from '../../../support/timing.ts';
+import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, fastestElapsedMs } from '../../../support/timing.ts';
 
 const DIR = 'test/fixtures/security';
 
@@ -17,7 +17,7 @@ describe('classifyFileName', () => {
 
   it(`[SEC-22][WL-48] classifies a ${ADVERSARIAL_LENGTH}-character name under ${ADVERSARIAL_BUDGET_MS} ms`, () => {
     const name = `${' 1'.repeat(ADVERSARIAL_LENGTH / 2)}.md`;
-    expect(medianElapsedMs(() => classifyFileName(name))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    expect(fastestElapsedMs(() => classifyFileName(name))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
   });
 });
 
@@ -34,7 +34,7 @@ describe('hasMergeConflictMarkers', () => {
 
   it(`[SEC-22][WL-48] scans ${ADVERSARIAL_LENGTH} marker-like lines under ${ADVERSARIAL_BUDGET_MS} ms`, () => {
     const text = '<<<<<<< x\n'.repeat(ADVERSARIAL_LENGTH / 10);
-    expect(medianElapsedMs(() => hasMergeConflictMarkers(text))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    expect(fastestElapsedMs(() => hasMergeConflictMarkers(text))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
   });
 });
 

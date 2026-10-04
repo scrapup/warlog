@@ -18,7 +18,7 @@ function jsonl(...records: Record<string, unknown>[]): string {
 }
 
 describe('aggregateActivity', () => {
-  it('[WL-18] aggregates recall usage and command observations of the last 90 days from both roots', async () => {
+  it('[WL-18] aggregates recall usage and command observations of the last 90 days (window start included) from both roots', async () => {
     const fs = new MemoryFileSystem({
       [join(GLOBAL_ROOT, 'activity', 'm-aaaaaaaa', '2026-10-01.jsonl')]: jsonl(
         { ts: '2026-10-01T10:00:00.000Z', action: 'recalled', entity_id: MEM },
@@ -29,11 +29,16 @@ describe('aggregateActivity', () => {
         { ts: '2026-10-02T07:00:00.000Z', action: 'command_observed', cmd_memory_id: CMD, outcome: 'ok' },
         { ts: '2026-10-02T07:30:00.000Z', action: 'created', entity_id: MEM },
       )}not json\n[1]\n\n`,
-      [join(REPO_ROOT, 'activity', 'm-bbbbbbbb', '2026-06-01.jsonl')]: jsonl({ ts: '2026-06-01T00:00:00.000Z', action: 'recalled', entity_id: MEM }),
+      [join(REPO_ROOT, 'activity', 'm-bbbbbbbb', '2026-07-04.jsonl')]: jsonl({ ts: '2026-07-04T00:00:00.000Z', action: 'recalled', entity_id: MEM }),
+      [join(REPO_ROOT, 'activity', 'm-bbbbbbbb', '2026-07-05.jsonl')]: jsonl({ ts: '2026-07-05T00:00:00.000Z', action: 'recalled', entity_id: '01J00000000000000000000M09' }),
+      [join(REPO_ROOT, 'activity', 'm-cccccccc', '2026-10-03.jsonl')]: jsonl({ ts: '2026-10-03T00:00:00.000Z', action: 'recalled', entity_id: MEM }),
       [join(REPO_ROOT, 'activity', 'm-bbbbbbbb', 'notes.txt')]: 'ignored',
     });
+    fs.failReads.add(join(REPO_ROOT, 'activity', 'm-cccccccc', '2026-10-03.jsonl'));
     const summary = await aggregateActivity(fs, [GLOBAL_ROOT, REPO_ROOT], NOW);
     expect(summary.usage.get(MEM)).toEqual({ count: 2, lastAt: '2026-10-01T10:00:00.000Z' });
+    expect(summary.usage.get('01J00000000000000000000M09')?.count).toBe(1);
+    expect(summary.unreadableFiles).toBe(1);
     expect(summary.commands.get(CMD)).toEqual([
       { ts: '2026-10-02T07:00:00.000Z', machine: '', outcome: 'ok', exitCode: undefined, env: {} },
       { ts: '2026-10-02T08:00:00.000Z', machine: 'm-bbbbbbbb', outcome: 'fail', exitCode: 2, env: { os: 'linux' } },
@@ -42,7 +47,6 @@ describe('aggregateActivity', () => {
   });
 
   it('returns an empty summary without activity', async () => {
-    const summary = await aggregateActivity(new MemoryFileSystem(), [GLOBAL_ROOT], NOW);
-    expect(summary.usage.size + summary.commands.size + summary.invalidLines).toBe(0);
+    expect(await aggregateActivity(new MemoryFileSystem(), [GLOBAL_ROOT], NOW)).toEqual({ usage: new Map(), commands: new Map(), invalidLines: 0, unreadableFiles: 0 });
   });
 });

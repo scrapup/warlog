@@ -2,9 +2,9 @@
  * The in-memory view of the store (plan §3.7, WL-06): rebuilt from the files at start, never
  * persisted. Holds entities, variables, relations and the files excluded from the view.
  */
+import type { ActivitySummary, StoreView } from '../ports/store-view.port.ts';
 import { compareCodeUnits } from '../security/compare.ts';
 import type { EntityType } from '../storage/entity-ref.ts';
-import type { ActivitySummary } from './activity-aggregator.ts';
 import { EMPTY_ACTIVITY } from './activity-aggregator.ts';
 import { ExcludedFiles } from './excluded-files.ts';
 import type { EntityLink, FileProblem, IndexedEntity, IndexedVar, TempFile } from './indexed-entity.ts';
@@ -46,8 +46,8 @@ function typeKey(type: EntityType, projectId: string | undefined): string {
   return `${type}\u0000${projectId ?? ''}`;
 }
 
-/** The view: queries plus the mutations used by the builder and the watcher. */
-export class StoreIndex {
+/** The view: queries ({@link StoreView}) plus the mutations used by the builder and the watcher. */
+export class StoreIndex implements StoreView {
   /** Entities by id. */
   private readonly entities = new Map<string, IndexedEntity>();
   /** Entity id by file path. */
@@ -240,6 +240,10 @@ export class StoreIndex {
    * @param separator - Path separator of the platform.
    */
   removeTree(path: string, separator: string): void {
+    if (this.idByPath.has(path) || this.vars.has(path) || this.excluded.has(path)) {
+      this.removePath(path);
+      return;
+    }
     const prefix = `${path}${separator}`;
     this.knownPaths().filter((p) => p === path || p.startsWith(prefix)).forEach((p) => this.removePath(p));
   }

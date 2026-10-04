@@ -3,6 +3,7 @@
  */
 import { z } from 'zod';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
+import type { Logger } from '../../core/ports/logger.port.ts';
 import { DoctorHandler } from './doctor.handler.ts';
 
 /** Input schema (no parameters). */
@@ -10,9 +11,10 @@ const DOCTOR_INPUT = z.object({});
 
 /**
  * Builds the definition.
+ * @param logger - Logger for failed probes.
  * @returns The `doctor` operation.
  */
-export function doctorOperation(): OperationDefinition {
+export function doctorOperation(logger: Logger): OperationDefinition {
   return {
     name: 'doctor',
     group: 'doctor',
@@ -20,10 +22,10 @@ export function doctorOperation(): OperationDefinition {
     kind: 'query',
     input: DOCTOR_INPUT,
     description:
-      'Report conflict copies, merge-conflicted and invalid files, pending links, broken document references, memories due for review and stale temp files. Never repairs anything.',
+      'Report conflict copies, merge-conflicted and invalid files, pending links and stale temp files (document references and memory review are reported as not_checked until available). Never repairs anything.',
     examples: [{}],
     defaultFormat: 'yaml',
     load: 'full',
-    handler: new DoctorHandler(),
+    handler: new DoctorHandler(logger),
   };
 }

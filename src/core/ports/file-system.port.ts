@@ -7,6 +7,10 @@ import type { WarlogError } from '../errors/warlog-error.ts';
 export interface FileStat {
   /** `true` for a directory. */
   readonly isDirectory: boolean;
+  /** `true` for a regular file. */
+  readonly isFile: boolean;
+  /** `true` for a symbolic link (only from {@link FileSystem.lstat}). */
+  readonly isSymbolicLink: boolean;
   /** Size in bytes. */
   readonly size: number;
   /** Last modification time in epoch milliseconds. */
@@ -64,6 +68,12 @@ export interface FileSystem {
    * @returns The metadata, or `undefined` when the entry does not exist.
    */
   stat(path: string): Promise<FileStat | undefined>;
+  /**
+   * Reads entry metadata without following a final symbolic link.
+   * @param path - Entry path.
+   * @returns Metadata, or `undefined` when missing.
+   */
+  lstat(path: string): Promise<FileStat | undefined>;
   /**
    * Creates a directory and its parents (no error when it exists).
    * @param path - Directory path.

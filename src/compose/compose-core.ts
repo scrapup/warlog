@@ -8,12 +8,13 @@ import type { ExecuteDeps } from '../adapters/shared/execute-operation.ts';
 import { LocalMachineId } from '../core/adapters/local-machine-id.ts';
 import { NodeFileSystem } from '../core/adapters/node-file-system.ts';
 import { NodeRecursiveWatcher } from '../core/adapters/node-recursive-watcher.ts';
-import { NODE_TIMERS } from '../core/adapters/node-timers.ts';
+import { NodeTimers } from '../core/adapters/node-timers.ts';
 import { ProcessEnv } from '../core/adapters/process-env.ts';
 import { StderrJsonLogger, parseLogLevel } from '../core/adapters/stderr-json-logger.ts';
 import { SystemClock } from '../core/adapters/system-clock.ts';
 import { UlidGenerator } from '../core/adapters/ulid-generator.ts';
 import type { Redaction } from '../core/errors/path-redactor.ts';
+import type { WarlogError } from '../core/errors/warlog-error.ts';
 import { GitCliClient } from '../core/git/git-cli-client.ts';
 import { resolveGitBinary } from '../core/git/git-binary.ts';
 import { RepoLocator } from '../core/git/repo-locator.ts';
@@ -41,10 +42,13 @@ export interface Core extends ExecuteDeps {
   /** Package version. */
   readonly version: string;
   /**
-   * Builds the index of the working directory's roots now (MCP start-up, plan §3.7).
+   * Builds the live index of the working directory's roots now (MCP start-up, plan §3.7).
    * @returns When built.
+   * @throws {WarlogError} `INTERNAL` in the command-line profile; any error of the build.
    */
   warmIndex(): Promise<void>;
+  /** Stops the live index's watcher (MCP shutdown). */
+  close(): void;
 }
 
 /** Options of {@link composeCore}. */
@@ -121,10 +125,23 @@ export function composeCore(options: ComposeOptions = {}): Core {
     fs,
     builder,
     guard,
+    logger,
     mode: options.index ?? 'lazy',
-    onBuilt: (index, roots) => new WatcherService({ watcher: new NodeRecursiveWatcher(), builder, index, roots, logger, timers: NODE_TIMERS }).start(),
+    onBuilt: (index, roots) => {
+      const watcher = new WatcherService({ watcher: new NodeRecursiveWatcher(), builder, index, roots, logger, timers: new NodeTimers(), clock });
+      watcher.start();
+      return () => watcher.stop();
+    },
   });
-  const contexts = new StoreContextFactory({ resolver, env, git, clock, ids: new UlidGenerator(clock), machine, indexes: (roots) => indexes.sourceFor(roots) });
+  const contexts = new StoreContextFactory({
+    resolver,
+    env,
+    git,
+    clock,
+    ids: new UlidGenerator(clock),
+    machine,
+    indexes: (roots, request) => indexes.sourceFor(roots, request.load, request.operation),
+  });
   const registry = new OperationRegistry(operations({ fs, logger }));
   const redactions = staticRedactions(env);
   const behaviors = buildPipeline({ logger, redactions, contexts, secretGuard: new SecretGuard(), activity: new ActivityLog({ fs, clock, machine, guard, logger }) });
@@ -135,5 +152,5 @@ export function composeCore(options: ComposeOptions = {}): Core {
   const warmIndex = async (): Promise<void> => {
     await indexes.ensure(await resolver.resolve(env.cwd()));
   };
-  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), logger, redactions, version: readVersion(), warmIndex };
+  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), logger, redactions, version: readVersion(), warmIndex, close: () => indexes.close() };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { join } from 'node:path';
+import { MAX_STORE_FILE_BYTES } from '../../../../src/core/index/file-loader.ts';
 import { IndexBuilder } from '../../../../src/core/index/index-builder.ts';
-import { mapLimit } from '../../../../src/core/index/bounded.ts';
 import { stringifyFrontMatter } from '../../../../src/core/storage/front-matter-codec.ts';
 import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
 import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
@@ -103,6 +103,7 @@ describe('IndexBuilder', () => {
     fs.files.set(repo('projects', P, 'notes', '01J00000000000000000000N04.md'), entity({ id: '01J00000000000000000000N04', type: 'unknown' }));
     fs.files.set(repo('memories', `${M}.md`), entity({ id: M, type: 'memory' }));
     fs.files.set(repo('vars', 'bad.yaml'), 'name: [\n');
+    fs.files.set(repo('vars', 'conflict.yaml'), 'name: x\n<<<<<<< a\n=======\n>>>>>>> b\n');
     fs.files.set(repo('vars', 'fields.yaml'), 'value: 1\n');
     fs.files.set(repo('projects', P, 'other.yaml'), 'a: 1\n');
     const { index, stats } = await build(fs);
@@ -118,10 +119,11 @@ describe('IndexBuilder', () => {
       [`projects/${P}/notes/01J00000000000000000000N04.md`, 'front_matter'],
       [`projects/${P}/other.yaml`, 'unexpected_file'],
       ['vars/bad.yaml', 'yaml'],
+      ['vars/conflict.yaml', 'merge_conflict'],
       ['vars/fields.yaml', 'var_fields'],
     ]);
     expect(index.get(M)?.scope).toBe('global');
-    expect(stats).toMatchObject({ invalid: 8, conflictCopies: 2 });
+    expect(stats).toMatchObject({ invalid: 9, conflictCopies: 2 });
   });
 
   it('[WL-43] skips activity logs, document areas and other repositories, and records temp files', async () => {
@@ -137,12 +139,35 @@ describe('IndexBuilder', () => {
     expect(index.excluded.tempFiles()).toEqual([{ root: 'repo', relative: `projects/${P}/tasks/.${T1}.md.tmp-1-abc`, path: repo('projects', P, 'tasks', `.${T1}.md.tmp-1-abc`), mtimeMs: 1_000 }]);
   });
 
-  it('reports unreadable files as invalid', async () => {
+  it('[WL-43] never follows links, reads only regular files and refuses oversized files', async () => {
+    const fs = store();
+    const outside = join('/etc', 'warlog-outside.md');
+    fs.files.set(outside, entity({ id: '01J00000000000000000000Z01', type: 'memory' }));
+    fs.links.set(repo('memories', '01J00000000000000000000Z01.md'), outside);
+    fs.files.set(repo('memories', '01J00000000000000000000Z02.md'), `${entity({ id: '01J00000000000000000000Z02', type: 'memory' })}${'x'.repeat(MAX_STORE_FILE_BYTES)}`);
+    const { index } = await build(fs);
+    expect(index.get('01J00000000000000000000Z01')).toBeUndefined();
+    expect(index.excluded.invalidFiles().map((p) => [p.relative, p.reason])).toEqual([
+      ['memories/01J00000000000000000000Z01.md', 'symlink'],
+      ['memories/01J00000000000000000000Z02.md', 'too_large'],
+    ]);
+  });
+
+  it('[WL-43] keeps the global entity when a repository file reuses its id', async () => {
+    const fs = store();
+    fs.files.set(join('/a', 'repo', '.warlog', 'memories', `${M}.md`), entity({ id: M, type: 'memory', title: 'repo copy' }));
+    const roots: StoreRoots = { global: GLOBAL_ROOT, repository: { root: join('/a', 'repo', '.warlog'), key: 'k', mode: 'in-repo', mainWorktree: join('/a', 'repo') }, warnings: [] };
+    const { index } = await build(fs, roots);
+    expect(index.get(M)?.scope).toBe('global');
+    expect(index.excluded.invalidFiles().map((p) => p.reason)).toEqual(['duplicate_id']);
+  });
+
+  it('reports unreadable files as invalid with their system code', async () => {
     const fs = store();
     const path = repo('projects', P, 'tasks', `${T1}.md`);
     fs.failReads = new Set([path]);
     const { index } = await build(fs);
-    expect(index.excluded.invalidFiles()).toMatchObject([{ path, reason: 'unreadable' }]);
+    expect(index.excluded.invalidFiles()).toMatchObject([{ path, reason: 'unreadable:EACCES' }]);
   });
 
   it('builds the global view alone outside a repository', async () => {
@@ -156,6 +181,10 @@ describe('IndexBuilder.reload', () => {
     const fs = store();
     const builder = new IndexBuilder({ fs, clock: new FixedClock() });
     const { index } = await builder.build(ROOTS);
+    const added = repo('projects', P, 'notes', '01J00000000000000000000N01.md');
+    fs.files.set(added, entity({ id: '01J00000000000000000000N01', type: 'note', project_id: P }));
+    await builder.reload(index, ROOTS, added);
+    expect(index.list('note', P).map((e) => e.id)).toEqual(['01J00000000000000000000N01']);
     const path = repo('projects', P, 'tasks', `${T1}.md`);
     fs.files.set(path, entity({ id: T1, type: 'task', project_id: P, title: 'A2' }));
     await builder.reload(index, ROOTS, path);
@@ -183,7 +212,7 @@ describe('IndexBuilder.reload', () => {
     expect(index.size).toBe(1);
   });
 
-  it('ignores paths outside the roots, directories and skipped areas', async () => {
+  it('ignores paths outside the roots and skipped areas; records copies and temp files', async () => {
     const fs = store();
     const builder = new IndexBuilder({ fs, clock: new FixedClock() });
     const { index } = await builder.build(ROOTS);
@@ -201,7 +230,7 @@ describe('IndexBuilder.reload', () => {
     expect(index.excluded.tempFiles().map((t) => t.path)).toEqual([temp]);
   });
 
-  it('replaces the whole view atomically after a rescan', async () => {
+  it('replaces the whole view with a fresh build', async () => {
     const fs = store();
     const { index } = await build(fs);
     fs.files.delete(repo('projects', P, 'tasks', `${T2}.md`));
@@ -211,22 +240,5 @@ describe('IndexBuilder.reload', () => {
     expect(index.get(T2)).toBeUndefined();
     expect(index.list('task', P).map((e) => e.id)).toEqual([T1]);
     expect(index.excluded.conflictCopies()).toHaveLength(1);
-  });
-});
-
-describe('mapLimit', () => {
-  it('keeps the input order and never exceeds the limit', async () => {
-    let inFlight = 0;
-    let peak = 0;
-    const out = await mapLimit([1, 2, 3, 4, 5], 2, async (n) => {
-      inFlight += 1;
-      peak = Math.max(peak, inFlight);
-      await new Promise((r) => setTimeout(r, 1));
-      inFlight -= 1;
-      return n * 2;
-    });
-    expect(out).toEqual([2, 4, 6, 8, 10]);
-    expect(peak).toBe(2);
-    expect(await mapLimit([], 4, async () => 1)).toEqual([]);
   });
 });

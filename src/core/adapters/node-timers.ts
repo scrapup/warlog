@@ -1,12 +1,25 @@
 /**
  * {@link Timers} over the Node timers; they never keep the process alive on their own.
  */
-import type { Timers } from '../index/watcher-service.ts';
+import type { Timers } from '../ports/timers.port.ts';
 
 /** Node timers, unreferenced. */
-export const NODE_TIMERS: Timers = {
-  setTimeout: (fn, ms) => setTimeout(fn, ms).unref(),
-  clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
-  setInterval: (fn, ms) => setInterval(fn, ms).unref(),
-  clearInterval: (handle) => clearInterval(handle as NodeJS.Timeout),
-};
+export class NodeTimers implements Timers<NodeJS.Timeout> {
+  /**
+   * Schedules a call.
+   * @param fn - Callback.
+   * @param ms - Delay.
+   * @returns The timer.
+   */
+  setTimeout(fn: () => void, ms: number): NodeJS.Timeout {
+    return setTimeout(fn, ms).unref();
+  }
+
+  /**
+   * Cancels a call.
+   * @param handle - Timer.
+   */
+  clearTimeout(handle: NodeJS.Timeout): void {
+    clearTimeout(handle);
+  }
+}

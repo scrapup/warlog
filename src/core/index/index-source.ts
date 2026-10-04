@@ -1,60 +1,43 @@
 /**
- * How operations reach the view (plan §3.7): `full()` returns the whole index; `entity(ref)`
- * reads one entity. The MCP server keeps a live index; the CLI builds the full index only for
- * `load: full` operations and reads single files for `load: point` ones.
+ * Index sources (plan §3.7): `full()` returns the whole view; `entity(ref)` reads one entity.
+ * The contract lives in the store-view port; these are the shared building blocks.
  */
 import { WarlogError } from '../errors/warlog-error.ts';
+import type { IndexSource, IndexedEntity, StoreView } from '../ports/store-view.port.ts';
 import type { EntityRef } from '../storage/entity-ref.ts';
-import type { IndexedEntity } from './indexed-entity.ts';
-import type { StoreIndex } from './store-index.ts';
 
-/** Access to the view for one call. */
-export interface IndexSource {
-  /**
-   * The whole view.
-   * @returns The index.
-   * @throws {WarlogError} `INTERNAL` for an operation declared `load: point`.
-   */
-  full(): Promise<StoreIndex>;
-  /**
-   * One entity, without scanning the store.
-   * @param ref - Entity reference.
-   * @returns The entity, or `undefined` when absent or excluded.
-   * @throws {WarlogError} `NO_REPO_CONTEXT` / `VALIDATION` for an invalid reference.
-   */
-  entity(ref: EntityRef): Promise<IndexedEntity | undefined>;
-}
+export type { IndexSource } from '../ports/store-view.port.ts';
 
 /**
- * Selects an entity from an index when it matches the reference.
- * @param index - View.
+ * Selects an entity from a view when it matches the reference.
+ * @param view - View.
  * @param ref - Reference.
  * @returns The entity, when its type and scope match.
  */
-export function entityFrom(index: StoreIndex, ref: EntityRef): IndexedEntity | undefined {
-  const found = index.get(ref.id);
+export function entityFrom(view: StoreView, ref: EntityRef): IndexedEntity | undefined {
+  const found = view.get(ref.id);
   return found !== undefined && found.type === ref.type && found.scope === ref.scope ? found : undefined;
 }
 
-/** Source over an index already built (MCP server: kept current by the watcher). */
+/** Source over a view already built. */
 export class LiveIndexSource implements IndexSource {
   /** The view. */
-  private readonly index: StoreIndex;
+  private readonly view: StoreView;
 
   /**
    * Creates the source.
-   * @param index - The view.
+   * @param view - The view.
    */
-  constructor(index: StoreIndex) {
-    this.index = index;
+  constructor(view: StoreView) {
+    this.view = view;
   }
 
   /**
    * The whole view.
-   * @returns The index.
+   * @returns The view.
    */
-  async full(): Promise<StoreIndex> {
-    return this.index;
+  async full(): Promise<StoreView> {
+    return this.view;
   }
 
   /**
@@ -63,12 +46,12 @@ export class LiveIndexSource implements IndexSource {
    * @returns The entity, when present.
    */
   async entity(ref: EntityRef): Promise<IndexedEntity | undefined> {
-    return entityFrom(this.index, ref);
+    return entityFrom(this.view, ref);
   }
 }
 
 /**
- * Restricts a source to point reads (enforces `load: point`, plan §3.7).
+ * Restricts a source to point reads (enforces `load: point` in both interfaces, plan §3.7).
  * @param source - Source.
  * @param operation - Operation name, for the error.
  * @returns A source whose `full()` fails.

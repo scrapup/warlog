@@ -5,15 +5,13 @@
 import { relative, sep } from 'node:path';
 import type { WarlogError } from '../errors/warlog-error.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
+import type { IndexSource, IndexedEntity, StoreView } from '../ports/store-view.port.ts';
 import type { EntityRef } from '../storage/entity-ref.ts';
 import type { EntityPaths } from '../storage/entity-paths.ts';
 import type { StoreRoots } from '../storage/store-roots.ts';
-import { readStoreFile } from './entity-reader.ts';
+import { loadStoreFile } from './file-loader.ts';
 import type { IndexBuilder } from './index-builder.ts';
-import type { IndexSource } from './index-source.ts';
 import { entityFrom } from './index-source.ts';
-import type { IndexedEntity } from './indexed-entity.ts';
-import type { StoreIndex } from './store-index.ts';
 
 /** Collaborators of {@link LazyIndexSource}. */
 export interface LazyIndexSourceDeps {
@@ -32,7 +30,7 @@ export class LazyIndexSource implements IndexSource {
   /** Collaborators. */
   private readonly deps: LazyIndexSourceDeps;
   /** The full index, once built. */
-  private built: Promise<StoreIndex> | undefined;
+  private built: Promise<StoreView> | undefined;
 
   /**
    * Creates the source.
@@ -46,7 +44,7 @@ export class LazyIndexSource implements IndexSource {
    * Builds the full index (once).
    * @returns The index.
    */
-  async full(): Promise<StoreIndex> {
+  async full(): Promise<StoreView> {
     this.built ??= this.deps.builder.build(this.deps.roots).then((r) => r.index);
     return this.built;
   }
@@ -54,7 +52,7 @@ export class LazyIndexSource implements IndexSource {
   /**
    * Reads one entity file (or uses the full index when already built).
    * @param ref - Entity reference.
-   * @returns The entity, or `undefined` when missing or invalid.
+   * @returns The entity, or `undefined` when missing, invalid, a link or too large.
    * @throws {WarlogError} `NO_REPO_CONTEXT` / `VALIDATION` for an invalid reference.
    */
   async entity(ref: EntityRef): Promise<IndexedEntity | undefined> {
@@ -62,13 +60,9 @@ export class LazyIndexSource implements IndexSource {
       return entityFrom(await this.built, ref);
     }
     const path = await this.deps.paths.pathFor(ref);
-    const stat = await this.deps.fs.stat(path);
-    if (stat === undefined || stat.isDirectory) {
-      return undefined;
-    }
     const root = this.deps.paths.rootOf(ref.scope);
     const file = { root: ref.scope, path, relative: relative(root, path).split(sep).join('/') };
-    const outcome = readStoreFile(file, await this.deps.fs.readFile(path));
+    const outcome = await loadStoreFile(this.deps.fs, file);
     return outcome.kind === 'entity' && outcome.entity.type === ref.type ? outcome.entity : undefined;
   }
 }

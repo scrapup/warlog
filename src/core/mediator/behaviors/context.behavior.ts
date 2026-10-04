@@ -1,8 +1,7 @@
 /**
- * Builds the request context (roots, clock, ids, machine, defaults, index) before validation.
- * An operation declared `load: point` gets an index source that refuses full scans (plan §3.7).
+ * Builds the request context (roots, clock, ids, machine, defaults, index) before validation;
+ * the factory receives the operation's load mode (plan §3.7).
  */
-import { pointOnly } from '../../index/index-source.ts';
 import type { OperationContextFactory } from '../operation-context.ts';
 import type { OperationResult } from '../operation-result.ts';
 import type { Behavior, Next, PipelineRequest } from '../pipeline.ts';
@@ -29,8 +28,7 @@ export class ContextBehavior implements Behavior {
    * @returns The result.
    */
   async handle(request: PipelineRequest, next: Next): Promise<OperationResult | undefined> {
-    const context = await this.factory.create();
-    request.context = request.definition.load === 'point' ? { ...context, index: pointOnly(context.index, request.definition.name) } : context;
+    request.context = await this.factory.create({ operation: request.definition.name, load: request.definition.load });
     return next();
   }
 }

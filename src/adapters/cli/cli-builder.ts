@@ -4,6 +4,7 @@
  */
 import { Command, CommanderError, Option } from 'commander';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { isTopLevel } from '../../core/mediator/operation-definition.ts';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import { executeOperation, formatError, toLoggedFailure } from '../shared/execute-operation.ts';
 import type { ExecuteDeps, ExecuteOutcome } from '../shared/execute-operation.ts';
@@ -146,7 +147,7 @@ async function runOperation(op: OperationCommand, bindings: readonly FlagBinding
  * @param op - Operation command.
  */
 function addOperation(parent: Command, op: OperationCommand): void {
-  const name = op.def.action === '' ? op.def.group : op.def.action;
+  const name = isTopLevel(op.def) ? op.def.group : op.def.action;
   const command = parent.command(name).description(op.def.description).allowExcessArguments(false);
   command.configureHelp({ formatHelp: () => renderOperationHelp(op.def) });
   const bindings = fieldSpecs(op.def.input)
@@ -179,7 +180,7 @@ function buildProgram(deps: CliDeps, state: RunState): Command {
     .configureOutput({ writeOut: (t) => deps.io.stdout(t), writeErr: (t) => deps.io.stderr(t), outputError: () => undefined });
   const groups = new Map<string, Command>();
   for (const def of deps.registry.list()) {
-    if (def.action === '') {
+    if (isTopLevel(def)) {
       addOperation(program, { deps, def, state });
       continue;
     }

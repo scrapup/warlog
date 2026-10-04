@@ -1,49 +1,25 @@
 /**
  * Aggregates the activity of the last 90 days (plan §3.7): recall usage per entity and command
- * observations per command memory (WL-18). Unreadable lines are counted, never thrown.
+ * observations per command memory (WL-18). Files are processed one at a time as they are read
+ * (no global buffer); unreadable files and lines are counted, never thrown.
  */
 import type { FileSystem } from '../ports/file-system.port.ts';
+import type { ActivitySummary, CommandObservation, UsageStats } from '../ports/store-view.port.ts';
 import { compareCodeUnits } from '../security/compare.ts';
 import { isPlainRecord } from '../security/plain-record.ts';
-import { mapLimit } from './bounded.ts';
+import { MAX_OPEN_FILES, mapLimit } from './bounded.ts';
+import { readRegularFile } from './file-loader.ts';
+
+export type { ActivitySummary, CommandObservation, UsageStats } from '../ports/store-view.port.ts';
 
 /** Days of activity read at start. */
 export const ACTIVITY_WINDOW_DAYS = 90;
 
-/** Recall usage of one entity. */
-export interface UsageStats {
-  /** Number of `recalled` records. */
-  readonly count: number;
-  /** Most recent record (ISO 8601). */
-  readonly lastAt: string;
-}
-
-/** One `command_observed` record. */
-export interface CommandObservation {
-  /** When (ISO 8601). */
-  readonly ts: string;
-  /** Machine that observed it. */
-  readonly machine: string;
-  /** `ok` or `fail`. */
-  readonly outcome: string;
-  /** Exit code, when recorded. */
-  readonly exitCode: number | undefined;
-  /** Environment (`os`, `node`). */
-  readonly env: Readonly<Record<string, unknown>>;
-}
-
-/** Activity read from the store. */
-export interface ActivitySummary {
-  /** Recall usage by entity id. */
-  readonly usage: ReadonlyMap<string, UsageStats>;
-  /** Observations by command memory id, oldest first. */
-  readonly commands: ReadonlyMap<string, readonly CommandObservation[]>;
-  /** Lines that could not be read. */
-  readonly invalidLines: number;
-}
+/** Milliseconds in a day. */
+const MS_PER_DAY = 86_400_000;
 
 /** Summary without activity. */
-export const EMPTY_ACTIVITY: ActivitySummary = { usage: new Map(), commands: new Map(), invalidLines: 0 };
+export const EMPTY_ACTIVITY: ActivitySummary = { usage: new Map(), commands: new Map(), invalidLines: 0, unreadableFiles: 0 };
 
 /** Mutable state while aggregating. */
 interface Accumulator {
@@ -53,6 +29,8 @@ interface Accumulator {
   readonly commands: Map<string, CommandObservation[]>;
   /** Unreadable lines. */
   invalidLines: number;
+  /** Unreadable files. */
+  unreadableFiles: number;
 }
 
 /**
@@ -110,7 +88,31 @@ function accumulate(acc: Accumulator, record: Record<string, unknown>): void {
   }
   const cmd = record['cmd_memory_id'];
   if (record['action'] === 'command_observed' && typeof cmd === 'string') {
-    acc.commands.set(cmd, [...(acc.commands.get(cmd) ?? []), toObservation(record)]);
+    const list = acc.commands.get(cmd);
+    if (list === undefined) {
+      acc.commands.set(cmd, [toObservation(record)]);
+    } else {
+      list.push(toObservation(record));
+    }
+  }
+}
+
+/**
+ * Adds every line of one file.
+ * @param acc - Accumulator.
+ * @param text - File content.
+ */
+function accumulateText(acc: Accumulator, text: string): void {
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') {
+      continue;
+    }
+    const record = parseLine(line);
+    if (record === undefined) {
+      acc.invalidLines += 1;
+    } else {
+      accumulate(acc, record);
+    }
   }
 }
 
@@ -138,21 +140,17 @@ async function activityFiles(fs: FileSystem, root: string, since: string): Promi
  * @returns The summary.
  */
 export async function aggregateActivity(fs: FileSystem, roots: readonly string[], now: Date): Promise<ActivitySummary> {
-  const since = new Date(now.getTime() - ACTIVITY_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const since = new Date(now.getTime() - ACTIVITY_WINDOW_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
   const files = (await Promise.all(roots.map((root) => activityFiles(fs, root, since)))).flat();
-  const acc: Accumulator = { usage: new Map(), commands: new Map(), invalidLines: 0 };
-  const texts = await mapLimit(files, 16, (file) => fs.readFile(file).catch(() => ''));
-  for (const line of texts.flatMap((text) => text.split('\n'))) {
-    if (line.trim() === '') {
-      continue;
-    }
-    const record = parseLine(line);
-    if (record === undefined) {
-      acc.invalidLines += 1;
+  const acc: Accumulator = { usage: new Map(), commands: new Map(), invalidLines: 0, unreadableFiles: 0 };
+  await mapLimit(files, MAX_OPEN_FILES, async (file) => {
+    const read = await readRegularFile(fs, file);
+    if ('text' in read) {
+      accumulateText(acc, read.text);
     } else {
-      accumulate(acc, record);
+      acc.unreadableFiles += 1;
     }
-  }
+  });
   acc.commands.forEach((list) => list.sort((a, b) => compareCodeUnits(a.ts, b.ts)));
   return acc;
 }

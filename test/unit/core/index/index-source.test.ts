@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { IndexBuilder } from '../../../../src/core/index/index-builder.ts';
 import { IndexProvider } from '../../../../src/core/index/index-provider.ts';
+import type { Dispose } from '../../../../src/core/index/index-provider.ts';
 import { LiveIndexSource, pointOnly } from '../../../../src/core/index/index-source.ts';
 import { StoreIndex } from '../../../../src/core/index/store-index.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
@@ -10,7 +11,7 @@ import { PathGuard } from '../../../../src/core/security/path-guard.ts';
 import { stringifyFrontMatter } from '../../../../src/core/storage/front-matter-codec.ts';
 import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
 import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
-import { FixedClock } from '../../../support/fakes/simple-fakes.ts';
+import { FixedClock, RecordingLogger } from '../../../support/fakes/simple-fakes.ts';
 import { fixtureDeps } from '../../../support/fixture-deps.ts';
 import { fixtureOperation } from '../../../support/fixture-operations.ts';
 import { GLOBAL_ROOT, REPO_ROOT } from '../../../support/store-fixture.ts';
@@ -45,36 +46,40 @@ function store(): MemoryFileSystem {
  * @param fs - File system.
  * @param mode - Profile.
  * @param onBuilt - Build callback.
- * @returns Provider.
+ * @returns Provider and logger.
  */
-function provider(fs: MemoryFileSystem, mode: 'lazy' | 'live', onBuilt?: () => void): IndexProvider {
-  return new IndexProvider({ fs, builder: new IndexBuilder({ fs, clock: new FixedClock() }), guard: new PathGuard(fs), mode, ...(onBuilt === undefined ? {} : { onBuilt }) });
+function provider(fs: MemoryFileSystem, mode: 'lazy' | 'live', onBuilt?: () => Dispose) {
+  const logger = new RecordingLogger();
+  const indexes = new IndexProvider({ fs, builder: new IndexBuilder({ fs, clock: new FixedClock() }), guard: new PathGuard(fs), logger, mode, ...(onBuilt === undefined ? {} : { onBuilt }) });
+  return { indexes, logger };
 }
 
 describe('lazy index source (command line)', () => {
   it('reads a point entity from its file without scanning any directory', async () => {
     const fs = store();
-    const source = provider(fs, 'lazy').sourceFor(ROOTS);
+    const source = provider(fs, 'lazy').indexes.sourceFor(ROOTS, 'point', 'op');
     expect(await source.entity({ type: 'task', id: T, scope: 'repo', projectId: P })).toMatchObject({ id: T, projectId: P });
     expect(await source.entity({ type: 'memory', id: M, scope: 'global' })).toMatchObject({ id: M, scope: 'global' });
     expect(fs.readDirCalls).toBe(0);
   });
 
-  it('returns nothing for missing, invalid, directory or mistyped files', async () => {
+  it('returns nothing for missing, invalid, directory, linked or mistyped files', async () => {
     const fs = store();
     fs.files.set(join(REPO_ROOT, 'memories', `${M}.md`), 'broken');
     fs.dirs.add(join(GLOBAL_ROOT, 'global', 'memories', '01J00000000000000000000M02.md'));
-    const source = provider(fs, 'lazy').sourceFor(ROOTS);
+    fs.links.set(join(GLOBAL_ROOT, 'global', 'memories', '01J00000000000000000000M03.md'), join(GLOBAL_ROOT, 'global', 'memories', `${M}.md`));
+    const source = provider(fs, 'lazy').indexes.sourceFor(ROOTS, 'point', 'op');
     expect(await source.entity({ type: 'memory', id: '01J00000000000000000000M09', scope: 'global' })).toBeUndefined();
     expect(await source.entity({ type: 'memory', id: M, scope: 'repo' })).toBeUndefined();
     expect(await source.entity({ type: 'memory', id: '01J00000000000000000000M02', scope: 'global' })).toBeUndefined();
+    expect(await source.entity({ type: 'memory', id: '01J00000000000000000000M03', scope: 'global' })).toBeUndefined();
     fs.files.set(join(GLOBAL_ROOT, 'global', 'memories', `${M}.md`), file({ id: M, type: 'note' }));
     expect(await source.entity({ type: 'memory', id: M, scope: 'global' })).toBeUndefined();
   });
 
   it('builds the full index once and then serves point reads from it', async () => {
     const fs = store();
-    const source = provider(fs, 'lazy').sourceFor(ROOTS);
+    const source = provider(fs, 'lazy').indexes.sourceFor(ROOTS, 'full', 'op');
     const index = await source.full();
     expect(await source.full()).toBe(index);
     const calls = fs.readDirCalls;
@@ -82,20 +87,68 @@ describe('lazy index source (command line)', () => {
     expect(await source.entity({ type: 'memory', id: T, scope: 'global' })).toBeUndefined();
     expect(fs.readDirCalls).toBe(calls);
   });
+
+  it('refuses a live index in the command-line profile', () => {
+    expect(() => provider(store(), 'lazy').indexes.ensure(ROOTS)).toThrow(expect.objectContaining({ code: 'INTERNAL' }));
+  });
 });
 
 describe('live index source (MCP server)', () => {
-  it('builds each roots index once, reports it and serves both access paths', async () => {
+  it('builds the roots index once, logs its figures and serves both access paths', async () => {
     let built = 0;
-    const fs = store();
-    const live = provider(fs, 'live', () => {
+    const { indexes, logger } = provider(store(), 'live', () => {
       built += 1;
+      return () => undefined;
     });
-    const a = live.sourceFor(ROOTS);
-    const b = live.sourceFor(ROOTS);
-    expect(await a.full()).toBe(await b.full());
-    expect((await a.entity({ type: 'memory', id: M, scope: 'global' }))?.id).toBe(M);
+    const a = indexes.sourceFor(ROOTS, 'full', 'op');
+    const b = indexes.sourceFor(ROOTS, 'point', 'op');
+    expect(await a.full()).toBe(await indexes.ensure(ROOTS));
+    expect((await b.entity({ type: 'memory', id: M, scope: 'global' }))?.id).toBe(M);
     expect(built).toBe(1);
+    expect(logger.events).toEqual([{ level: 'info', event: 'index.built', fields: { trigger: 'start', files: 2, entries: 2, invalid: 0, conflict_copies: 0, duration_ms: 0 } }]);
+  });
+
+  it('releases the watcher on close and when the roots change', async () => {
+    const disposed: string[] = [];
+    let n = 0;
+    const { indexes } = provider(store(), 'live', () => {
+      n += 1;
+      const id = `w${n}`;
+      return () => {
+        disposed.push(id);
+      };
+    });
+    await indexes.ensure(ROOTS);
+    await indexes.ensure({ global: GLOBAL_ROOT, warnings: [] });
+    expect(disposed).toEqual(['w1']);
+    indexes.close();
+    expect(disposed).toEqual(['w1', 'w2']);
+    indexes.close();
+    expect(disposed).toEqual(['w1', 'w2']);
+  });
+
+  it('logs a start build above the SLA as a warning and ignores a superseded build', async () => {
+    const fs = store();
+    let t = 0;
+    const clock = { now: () => new Date((t += 6_000)) };
+    const logger = new RecordingLogger();
+    let built = 0;
+    const indexes = new IndexProvider({
+      fs,
+      builder: new IndexBuilder({ fs, clock }),
+      guard: new PathGuard(fs),
+      logger,
+      mode: 'live',
+      onBuilt: () => {
+        built += 1;
+        return () => undefined;
+      },
+    });
+    const first = indexes.ensure(ROOTS);
+    await indexes.ensure({ global: GLOBAL_ROOT, warnings: [] });
+    await first;
+    expect(built).toBe(1);
+    expect(logger.events.every((e) => e.level === 'warn' && e.event === 'index.built')).toBe(true);
   });
 
   it('retries a build that failed', async () => {
@@ -108,13 +161,13 @@ describe('live index source (MCP server)', () => {
       }
       return real(path, options);
     };
-    const live = provider(fs, 'live');
-    await expect(live.ensure(ROOTS)).rejects.toThrow('EMFILE');
+    const { indexes } = provider(fs, 'live');
+    await expect(indexes.ensure(ROOTS)).rejects.toThrow('EMFILE');
     fail = false;
-    expect((await live.ensure(ROOTS)).size).toBe(2);
+    expect((await indexes.ensure(ROOTS)).size).toBe(2);
   });
 
-  it('wraps an existing index', async () => {
+  it('wraps an existing view', async () => {
     const index = new StoreIndex();
     const source = new LiveIndexSource(index);
     expect(await source.full()).toBe(index);
@@ -122,8 +175,8 @@ describe('live index source (MCP server)', () => {
   });
 });
 
-describe('load modes in the pipeline', () => {
-  it('refuses a full index to an operation declared load: point', async () => {
+describe('load modes', () => {
+  it('refuses a full index to an operation declared load: point in the pipeline', async () => {
     const point: OperationDefinition = {
       ...fixtureOperation('fixture_echo'),
       name: 'fixture_point',
@@ -141,14 +194,13 @@ describe('load modes in the pipeline', () => {
     const full: OperationDefinition = { ...point, name: 'fixture_full', action: 'full', load: 'full' };
     const deps = fixtureDeps([point, full]);
     await expect(deps.mediator.send('fixture_point', {})).rejects.toMatchObject({ code: 'INTERNAL' });
-    expect(deps.store.logger.events.map((e) => e.event)).toEqual(['op.failed']);
     expect((await deps.mediator.send('fixture_full', {})).result).toEqual({ kind: 'scalar', value: 'scanned' });
   });
 
-  it('keeps point reads available to point operations', async () => {
-    const inner = new LiveIndexSource(new StoreIndex());
-    const restricted = pointOnly(inner, 'x');
+  it('keeps point reads available behind the restriction, in both profiles', async () => {
+    const restricted = pointOnly(new LiveIndexSource(new StoreIndex()), 'x');
     expect(await restricted.entity({ type: 'memory', id: M, scope: 'global' })).toBeUndefined();
     await expect(restricted.full()).rejects.toMatchObject({ code: 'INTERNAL', details: { operation: 'x' } });
+    await expect(provider(store(), 'live').indexes.sourceFor(ROOTS, 'point', 'y').full()).rejects.toMatchObject({ details: { operation: 'y' } });
   });
 });

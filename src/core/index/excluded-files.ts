@@ -2,11 +2,11 @@
  * Files kept out of the view and reported (WL-43): invalid files, sync conflict copies and
  * temporary files left by interrupted writes.
  */
-import type { FileProblem, TempFile } from './indexed-entity.ts';
+import type { ExcludedView, FileProblem, TempFile } from '../ports/store-view.port.ts';
 import { sortByPath } from './relations.ts';
 
 /** Excluded files by path. */
-export class ExcludedFiles {
+export class ExcludedFiles implements ExcludedView {
   /** Invalid files. */
   private readonly invalid = new Map<string, FileProblem>();
   /** Conflict copies. */
@@ -63,6 +63,15 @@ export class ExcludedFiles {
     this.invalid.delete(path);
     this.conflicts.delete(path);
     this.temps.delete(path);
+  }
+
+  /**
+   * Tells whether a path is excluded.
+   * @param path - Absolute path.
+   * @returns `true` when known.
+   */
+  has(path: string): boolean {
+    return this.invalid.has(path) || this.conflicts.has(path) || this.temps.has(path);
   }
 
   /**

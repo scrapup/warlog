@@ -8,6 +8,7 @@ import { hasMergeConflictMarkers } from '../security/merge-marker-detector.ts';
 import { isPlainRecord } from '../security/plain-record.ts';
 import type { EntityType } from '../storage/entity-ref.ts';
 import { parseFrontMatter } from '../storage/front-matter-codec.ts';
+import type { FrontMatterDocument } from '../storage/front-matter-codec.ts';
 import { parseYaml } from '../storage/yaml-codec.ts';
 import type { IndexedEntity, IndexedVar, ScannedFile } from './indexed-entity.ts';
 
@@ -59,15 +60,25 @@ export interface InvalidOutcome {
 export type ReadOutcome = EntityOutcome | VarOutcome | InvalidOutcome;
 
 /**
+ * Tells whether a path lies in an area never indexed (activity, documents, other repositories).
+ * @param file - Scanned file or directory.
+ * @returns `true` when skipped whatever its name.
+ */
+export function inSkippedArea(file: ScannedFile): boolean {
+  const segments = file.relative.split('/');
+  return (file.root === 'global' && segments[0] === 'repos') || segments.some((s) => SKIPPED_SEGMENTS.has(s));
+}
+
+/**
  * Decides how a scan treats a file (WL-43).
  * @param file - Scanned file.
  * @returns The decision.
  */
 export function scanDecision(file: ScannedFile): ScanDecision {
-  const segments = file.relative.split('/');
-  if ((file.root === 'global' && segments[0] === 'repos') || segments.some((s) => SKIPPED_SEGMENTS.has(s))) {
+  if (inSkippedArea(file)) {
     return 'skip';
   }
+  const segments = file.relative.split('/');
   const name = segments[segments.length - 1] ?? '';
   const kind = classifyFileName(name);
   if (kind !== 'entity') {
@@ -108,7 +119,7 @@ function entityProblem(data: Readonly<Record<string, unknown>>, segments: readon
  * @returns The outcome.
  */
 function readEntity(file: ScannedFile, text: string): ReadOutcome {
-  let doc;
+  let doc: FrontMatterDocument;
   try {
     doc = parseFrontMatter(text, file.path);
   } catch (error: unknown) {
@@ -136,7 +147,7 @@ function readEntity(file: ScannedFile, text: string): ReadOutcome {
  * Reads a variable file (`…/vars/<name>.yaml`).
  * @param file - Scanned file.
  * @param text - Content.
- * @returns The outcome (other YAML files are skipped as `invalid: not_a_var`).
+ * @returns The outcome (other YAML files are excluded as `invalid: unexpected_file`).
  */
 function readVar(file: ScannedFile, text: string): ReadOutcome {
   const segments = file.relative.split('/');

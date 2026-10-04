@@ -44,22 +44,29 @@ function setup(vars: Record<string, string> = {}) {
     clock: new FixedClock(),
     ids: new SequentialIds(),
     machine: new FixedMachineId(),
-    indexes: () => new LiveIndexSource(new StoreIndex()),
+    indexes: (_roots, request) => {
+      requests.push(request);
+      return new LiveIndexSource(new StoreIndex());
+    },
   });
   return { factory, resolved, git };
 }
 
+const REQUEST = { operation: 'op', load: 'point' as const };
+const requests: unknown[] = [];
+
 describe('store context factory', () => {
   it('resolves the roots of the working directory on every call and copies their warnings', async () => {
     const { factory, resolved } = setup();
-    const first = await factory.create();
-    const second = await factory.create();
+    const first = await factory.create(REQUEST);
+    const second = await factory.create(REQUEST);
     expect(resolved).toEqual(['/work/repo', '/work/repo']);
     expect(first.warnings).toEqual(['git.unavailable']);
     first.warnings.push('x');
     expect(second.warnings).toEqual(['git.unavailable']);
     expect(first.activity).not.toBe(second.activity);
     expect(first.defaultProject).toBeUndefined();
+    expect(requests.at(-1)).toEqual(REQUEST);
   });
 
   it('propagates a failure to resolve the roots', async () => {
@@ -76,15 +83,15 @@ describe('store context factory', () => {
       machine: new FixedMachineId(),
       indexes: () => new LiveIndexSource(new StoreIndex()),
     });
-    await expect(factory.create()).rejects.toMatchObject({ code: 'VALIDATION' });
+    await expect(factory.create(REQUEST)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
   it('reads the default project and resolves the current branch lazily', async () => {
     const { factory, git } = setup({ WARLOG_PROJECT: 'warlog' });
-    const context = await factory.create();
+    const context = await factory.create(REQUEST);
     expect(context.defaultProject).toBe('warlog');
     expect(await context.currentBranch()).toBe('feature');
     expect(git.branchCalls).toEqual(['/work/repo']);
-    expect((await setup({ WARLOG_PROJECT: ' ' }).factory.create()).defaultProject).toBeUndefined();
+    expect((await setup({ WARLOG_PROJECT: ' ' }).factory.create(REQUEST)).defaultProject).toBeUndefined();
   });
 });

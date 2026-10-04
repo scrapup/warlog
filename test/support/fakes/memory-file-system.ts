@@ -101,7 +101,7 @@ export class MemoryFileSystem implements FileSystem {
     this.readDirCalls += 1;
     const prefix = `${this.resolve(path)}/`;
     const out = new Set<string>();
-    for (const key of [...this.files.keys(), ...this.dirs]) {
+    for (const key of [...this.files.keys(), ...this.dirs, ...this.links.keys()]) {
       if (key.startsWith(prefix)) {
         const rel = key.slice(prefix.length);
         if (options.recursive === true) {
@@ -124,10 +124,22 @@ export class MemoryFileSystem implements FileSystem {
     const p = this.resolve(path);
     const content = this.files.get(p);
     if (content !== undefined) {
-      return { isDirectory: false, size: Buffer.byteLength(content), mtimeMs: this.mtimes.get(p) ?? 0 };
+      return { isDirectory: false, isFile: true, isSymbolicLink: false, size: Buffer.byteLength(content), mtimeMs: this.mtimes.get(p) ?? 0 };
     }
     const isDir = this.dirs.has(p) || [...this.files.keys()].some((k) => k.startsWith(`${p}/`));
-    return isDir ? { isDirectory: true, size: 0, mtimeMs: 0 } : undefined;
+    return isDir ? { isDirectory: true, isFile: false, isSymbolicLink: false, size: 0, mtimeMs: 0 } : undefined;
+  }
+
+  /**
+   * Reads metadata without following a final link (a path in {@link links} is a link).
+   * @param path - Path.
+   * @returns Metadata or `undefined`.
+   */
+  async lstat(path: string): Promise<FileStat | undefined> {
+    if (this.links.has(norm(path))) {
+      return { isDirectory: false, isFile: false, isSymbolicLink: true, size: 0, mtimeMs: 0 };
+    }
+    return this.stat(path);
   }
 
   /**

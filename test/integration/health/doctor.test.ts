@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from '@jest/globals';
 import { mkdirSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { stringifyFrontMatter } from '../../src/core/storage/front-matter-codec.ts';
-import { isolatedEnv } from '../support/isolated-env.ts';
-import { runNode } from '../support/run-node.ts';
+import { stringifyFrontMatter } from '../../../src/core/storage/front-matter-codec.ts';
+import { isolatedEnv } from '../../support/isolated-env.ts';
+import { runNode } from '../../support/run-node.ts';
 
 const BIN = join(process.cwd(), 'src', 'bin', 'warlog.ts');
 const M1 = '01J00000000000000000000M01';
@@ -49,6 +49,9 @@ describe('warlog doctor on a real store', () => {
       conflict_copies: [{ root: 'global', path: `global/memories/${M1}.sync-conflict-20261001-ABC.md` }],
       merge_conflicts: [{ root: 'global', path: 'global/memories/01J00000000000000000000M02.md' }],
       pending_links: [{ from: M1, rel: 'relates', target: '01J00000000000000000000X99' }],
+      invalid_files: [],
+      document_references: 'not_checked',
+      memories_due_for_review: 'not_checked',
       stale_temp_files: [{ root: 'global', path: `global/memories/.${M1}.md.tmp-1-x` }],
     });
     expect(result.stdout).not.toContain(iso.store);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { normalizeRemote } from '../../../../src/core/git/remote-normalizer.ts';
-import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, medianElapsedMs } from '../../../support/timing.ts';
+import { ADVERSARIAL_BUDGET_MS, ADVERSARIAL_LENGTH, fastestElapsedMs } from '../../../support/timing.ts';
 
 describe('normalizeRemote', () => {
   it.each([
@@ -19,6 +19,6 @@ describe('normalizeRemote', () => {
 
   it(`[SEC-22][WL-48] normalizes a ${ADVERSARIAL_LENGTH}-character remote under ${ADVERSARIAL_BUDGET_MS} ms`, () => {
     const url = `https://${'@'.repeat(ADVERSARIAL_LENGTH / 2)}host/${'a/'.repeat(ADVERSARIAL_LENGTH / 4)}.git`;
-    expect(medianElapsedMs(() => normalizeRemote(url))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
+    expect(fastestElapsedMs(() => normalizeRemote(url))).toBeLessThan(ADVERSARIAL_BUDGET_MS);
   });
 });

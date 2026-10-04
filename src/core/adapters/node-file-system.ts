@@ -2,6 +2,7 @@
  * Node implementation of the {@link FileSystem} port.
  */
 import { randomBytes } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
@@ -44,6 +45,23 @@ const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Runs a stat call; a missing entry (including below a file: ENOTDIR) is `undefined`.
+ * @param call - `fs.stat` or `fs.lstat` of the path.
+ * @returns Metadata or `undefined`.
+ */
+async function statWith(call: () => Promise<Stats>): Promise<FileStat | undefined> {
+  try {
+    const s = await call();
+    return { isDirectory: s.isDirectory(), isFile: s.isFile(), isSymbolicLink: s.isSymbolicLink(), size: s.size, mtimeMs: s.mtimeMs };
+  } catch (error: unknown) {
+    if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /** {@link FileSystem} backed by `node:fs/promises`. */
@@ -142,15 +160,16 @@ export class NodeFileSystem implements FileSystem {
    * @returns Metadata or `undefined` when missing (including below a file: ENOTDIR).
    */
   async stat(path: string): Promise<FileStat | undefined> {
-    try {
-      const s = await fs.stat(path);
-      return { isDirectory: s.isDirectory(), size: s.size, mtimeMs: s.mtimeMs };
-    } catch (error: unknown) {
-      if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
-        return undefined;
-      }
-      throw error;
-    }
+    return statWith(() => fs.stat(path));
+  }
+
+  /**
+   * Reads entry metadata without following a final symbolic link.
+   * @param path - Entry path.
+   * @returns Metadata or `undefined` when missing.
+   */
+  async lstat(path: string): Promise<FileStat | undefined> {
+    return statWith(() => fs.lstat(path));
   }
 
   /**
