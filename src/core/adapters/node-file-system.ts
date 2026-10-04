@@ -2,13 +2,13 @@
  * Node implementation of the {@link FileSystem} port.
  */
 import { randomBytes } from 'node:crypto';
-import type { Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { WarlogError } from '../errors/warlog-error.ts';
-import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../ports/file-system.port.ts';
+import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock, TreeEntry } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
 import { acquireFileLock, codeOf } from './node-file-lock.ts';
+import { listTreeAt, readBounded, statWith } from './node-file-reads.ts';
 
 /** Tunables of {@link NodeFileSystem} (defaults suit production; tests shorten them). */
 export interface NodeFileSystemOptions {
@@ -45,23 +45,6 @@ const TRANSIENT_RENAME = new Set(['EPERM', 'EACCES', 'EBUSY']);
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Runs a stat call; a missing entry (including below a file: ENOTDIR) is `undefined`.
- * @param call - `fs.stat` or `fs.lstat` of the path.
- * @returns Metadata or `undefined`.
- */
-async function statWith(call: () => Promise<Stats>): Promise<FileStat | undefined> {
-  try {
-    const s = await call();
-    return { isDirectory: s.isDirectory(), isFile: s.isFile(), isSymbolicLink: s.isSymbolicLink(), size: s.size, mtimeMs: s.mtimeMs };
-  } catch (error: unknown) {
-    if (codeOf(error) === 'ENOENT' || codeOf(error) === 'ENOTDIR') {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 /** {@link FileSystem} backed by `node:fs/promises`. */
@@ -152,6 +135,26 @@ export class NodeFileSystem implements FileSystem {
       }
       throw error;
     }
+  }
+
+  /**
+   * Lists every descendant of a directory with its kind.
+   * @param path - Directory.
+   * @returns Entries; `[]` when the directory does not exist.
+   */
+  async listTree(path: string): Promise<TreeEntry[]> {
+    return listTreeAt(path);
+  }
+
+  /**
+   * Reads a file of at most `maxBytes` in 64 KiB chunks (one read for a small file); a final
+   * link is refused where `O_NOFOLLOW` exists.
+   * @param path - File path.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` above the limit.
+   */
+  async readFileBounded(path: string, maxBytes: number): Promise<string | undefined> {
+    return readBounded(path, maxBytes);
   }
 
   /**

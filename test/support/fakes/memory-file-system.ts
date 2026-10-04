@@ -3,7 +3,7 @@
  */
 import { WarlogError } from '../../../src/core/errors/warlog-error.ts';
 import { compareCodeUnits } from '../../../src/core/security/compare.ts';
-import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock } from '../../../src/core/ports/file-system.port.ts';
+import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock, TreeEntry } from '../../../src/core/ports/file-system.port.ts';
 import { PathMap, norm } from './path-map.ts';
 import { PathSet } from './path-set.ts';
 
@@ -122,6 +122,37 @@ export class MemoryFileSystem implements FileSystem {
     }
     const isDir = this.dirs.has(p) || [...this.files.keys()].some((k) => k.startsWith(`${p}/`));
     return isDir ? { isDirectory: true, isFile: false, isSymbolicLink: false, size: 0, mtimeMs: 0 } : undefined;
+  }
+
+  /**
+   * Lists every descendant with its kind.
+   * @param path - Directory.
+   * @returns Entries.
+   */
+  async listTree(path: string): Promise<TreeEntry[]> {
+    const names = await this.readDir(path, { recursive: true });
+    const base = this.resolve(path);
+    return names.map((relative) => {
+      const full = `${norm(path)}/${relative}`;
+      if (this.links.has(full)) {
+        return { relative, kind: 'symlink' as const };
+      }
+      return { relative, kind: this.files.has(`${base}/${relative}`) ? ('file' as const) : ('directory' as const) };
+    });
+  }
+
+  /**
+   * Reads a file within a size limit; a link is refused (`ELOOP`, as with `O_NOFOLLOW`).
+   * @param path - Path.
+   * @param maxBytes - Limit.
+   * @returns Content, or `undefined` above the limit.
+   */
+  async readFileBounded(path: string, maxBytes: number): Promise<string | undefined> {
+    if (this.links.has(path)) {
+      throw Object.assign(new Error(`ELOOP: ${path}`), { code: 'ELOOP' });
+    }
+    const text = await this.readFile(path);
+    return Buffer.byteLength(text) > maxBytes ? undefined : text;
   }
 
   /**

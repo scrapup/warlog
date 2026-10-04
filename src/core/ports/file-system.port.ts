@@ -23,6 +23,17 @@ export interface ReadDirOptions {
   readonly recursive?: boolean;
 }
 
+/** Kind of a listed entry (links are reported, never followed). */
+export type EntryKind = 'file' | 'directory' | 'symlink' | 'other';
+
+/** One entry of a recursive listing. */
+export interface TreeEntry {
+  /** Path relative to the listed directory, `/`-separated. */
+  readonly relative: string;
+  /** Entry kind. */
+  readonly kind: EntryKind;
+}
+
 /** Releases an exclusive lock. */
 export type ReleaseLock = () => Promise<void>;
 
@@ -62,6 +73,20 @@ export interface FileSystem {
    * @returns Entry names or relative paths; `[]` when the directory does not exist.
    */
   readDir(path: string, options?: ReadDirOptions): Promise<string[]>;
+  /**
+   * Lists every descendant of a directory with its kind (one call, no per-entry stat).
+   * @param path - Directory path.
+   * @returns Entries; `[]` when the directory does not exist.
+   */
+  listTree(path: string): Promise<TreeEntry[]>;
+  /**
+   * Reads a UTF-8 file of at most `maxBytes` without following a final link where the platform
+   * allows it.
+   * @param path - File path.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` when the file is larger than the limit.
+   */
+  readFileBounded(path: string, maxBytes: number): Promise<string | undefined>;
   /**
    * Reads entry metadata.
    * @param path - Entry path.

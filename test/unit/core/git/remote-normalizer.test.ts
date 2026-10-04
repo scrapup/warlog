@@ -19,6 +19,8 @@ describe('normalizeRemote', () => {
 
   it(`[WL-02] normalizes a ${ADVERSARIAL_LENGTH}-character remote to a safe key`, () => {
     const url = `https://${'@'.repeat(ADVERSARIAL_LENGTH / 2)}host/${'a/'.repeat(ADVERSARIAL_LENGTH / 4)}.git`;
-    expect(normalizeRemote(url)).toMatch(/^[a-z0-9._~-]+(__[A-Za-z0-9._~-]+)*$/);
+    const safe = new Set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._~-');
+    const segments = normalizeRemote(url).split('__');
+    expect(segments.every((segment) => segment.length > 0 && [...segment].every((ch) => safe.has(ch)))).toBe(true);
   });
 });

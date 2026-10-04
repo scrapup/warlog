@@ -6,7 +6,7 @@
  */
 import { join, sep } from 'node:path';
 import type { Clock } from '../ports/clock.port.ts';
-import type { FileSystem } from '../ports/file-system.port.ts';
+import type { EntryKind, FileSystem } from '../ports/file-system.port.ts';
 import { compareCodeUnits } from '../security/compare.ts';
 import type { StoreRoots } from '../storage/store-roots.ts';
 import { aggregateActivity } from './activity-aggregator.ts';
@@ -78,6 +78,8 @@ interface Decided {
   readonly file: ScannedFile;
   /** Decision. */
   readonly decision: ScanDecision;
+  /** Entry kind from the listing (`undefined`: unknown, `lstat` decides). */
+  readonly kind?: EntryKind;
 }
 
 /**
@@ -128,10 +130,13 @@ function locate(dirs: readonly RootDir[], path: string): ScannedFile | undefined
  * @returns Decided files.
  */
 async function listDecided(fs: FileSystem, root: RootKind, dir: string, prefix: string): Promise<Decided[]> {
-  const entries = await fs.readDir(dir, { recursive: true });
+  const entries = await fs.listTree(dir);
   return entries
-    .map((rel) => ({ root, relative: prefix === '' ? rel : `${prefix}/${rel}`, path: join(dir, ...rel.split('/')) }))
-    .map((file) => ({ file, decision: scanDecision(file) }))
+    .filter((e) => e.kind !== 'directory')
+    .map((e) => {
+      const file: ScannedFile = { root, relative: prefix === '' ? e.relative : `${prefix}/${e.relative}`, path: join(dir, ...e.relative.split('/')) };
+      return { file, decision: scanDecision(file), kind: e.kind };
+    })
     .filter((d) => d.decision !== 'skip')
     .sort((a, b) => compareCodeUnits(a.file.path, b.file.path));
 }
@@ -206,11 +211,11 @@ export class IndexBuilder {
    */
   private async applyAll(index: StoreIndex, decided: readonly Decided[]): Promise<number> {
     const ordered = [...decided].sort((a, b) => (a.file.root === b.file.root ? 0 : a.file.root === 'global' ? -1 : 1));
-    const toRead = ordered.filter((d) => d.decision === 'read').map((d) => d.file);
+    const toRead = ordered.filter((d) => d.decision === 'read');
     for (const d of ordered.filter((x) => x.decision !== 'read')) {
       await this.applyNonEntity(index, d.file, d.decision);
     }
-    const results = await mapLimit(toRead, MAX_OPEN_FILES, async (file) => ({ file, outcome: await loadStoreFile(this.deps.fs, file) }));
+    const results = await mapLimit(toRead, MAX_OPEN_FILES, async (d) => ({ file: d.file, outcome: await loadStoreFile(this.deps.fs, d.file, d.kind) }));
     results.forEach((r) => apply(index, r));
     return toRead.length;
   }
