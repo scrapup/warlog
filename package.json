@@ -1,0 +1,42 @@
+{
+  "name": "@scrapup/warlog",
+  "version": "0.0.0",
+  "description": "File-based memory and execution ledger for AI coding agents",
+  "license": "MIT",
+  "author": "scrapup",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scrapup/warlog.git"
+  },
+  "type": "module",
+  "bin": {
+    "warlog": "dist/bin/warlog.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "skills",
+    ".claude-plugin",
+    ".mcp.json",
+    "README*.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "ajv": "8.20.0",
+    "commander": "15.0.0",
+    "ulid": "3.0.2",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
+  }
+}

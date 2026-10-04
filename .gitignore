@@ -4,3 +4,4 @@ coverage/
 .warlog-test/
 *.tgz
 .DS_Store
+reports/
