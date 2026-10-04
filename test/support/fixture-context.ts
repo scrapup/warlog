@@ -1,6 +1,9 @@
 /**
  * Test helper: an operation context factory over in-memory fakes.
  */
+import type { IndexSource } from '../../src/core/index/index-source.ts';
+import { LiveIndexSource } from '../../src/core/index/index-source.ts';
+import { StoreIndex } from '../../src/core/index/store-index.ts';
 import type { OperationContext, OperationContextFactory } from '../../src/core/mediator/operation-context.ts';
 import { GLOBAL_ROOT, REPO_ROOT } from './store-fixture.ts';
 import { FixedClock, FixedMachineId, SequentialIds } from './fakes/simple-fakes.ts';
@@ -11,6 +14,8 @@ export class FixtureContextFactory implements OperationContextFactory {
   readonly created: OperationContext[] = [];
   /** Shared id generator. */
   readonly ids = new SequentialIds();
+  /** Index source handed to every context. */
+  index: IndexSource = new LiveIndexSource(new StoreIndex());
 
   /**
    * Creates a context.
@@ -24,6 +29,7 @@ export class FixtureContextFactory implements OperationContextFactory {
       machine: new FixedMachineId(),
       defaultProject: undefined,
       currentBranch: async () => 'main',
+      index: this.index,
       activity: [],
       warnings: [],
     };

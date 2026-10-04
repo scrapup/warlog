@@ -3,6 +3,7 @@
  * the collectors of activity records and warnings.
  */
 import type { WarlogError } from '../errors/warlog-error.ts';
+import type { IndexSource } from '../index/index-source.ts';
 import type { Clock } from '../ports/clock.port.ts';
 import type { IdGenerator } from '../ports/id-generator.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
@@ -31,6 +32,8 @@ export interface OperationContext {
   readonly defaultProject: string | undefined;
   /** Resolves `branch: "current"` to the active git branch. */
   readonly currentBranch: () => Promise<string | undefined>;
+  /** The view of the store (full or point access, plan §3.7). */
+  readonly index: IndexSource;
   /** Activity records appended by the Activity behavior after success (commands only). */
   readonly activity: PendingActivity[];
   /** Warning codes returned with the response. */

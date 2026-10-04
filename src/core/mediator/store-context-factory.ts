@@ -3,6 +3,7 @@
  * every call, so a long-running MCP server follows repository and configuration changes.
  */
 import type { WarlogError } from '../errors/warlog-error.ts';
+import type { IndexSource } from '../index/index-source.ts';
 import type { Clock } from '../ports/clock.port.ts';
 import type { Env } from '../ports/env.port.ts';
 import type { GitClient } from '../ports/git-client.port.ts';
@@ -22,6 +23,9 @@ export interface RootsResolver {
   resolve(cwd: string): Promise<StoreRoots>;
 }
 
+/** Gives the index source of a session's roots. */
+export type IndexSourceFactory = (roots: StoreRoots) => IndexSource;
+
 /** Collaborators of {@link StoreContextFactory}. */
 export interface StoreContextFactoryDeps {
   /** Store roots resolver. */
@@ -36,6 +40,8 @@ export interface StoreContextFactoryDeps {
   readonly ids: IdGenerator;
   /** Machine id. */
   readonly machine: MachineIdProvider;
+  /** Index source per roots. */
+  readonly indexes: IndexSourceFactory;
 }
 
 /** Builds contexts from the process environment. */
@@ -67,6 +73,7 @@ export class StoreContextFactory implements OperationContextFactory {
       machine: this.deps.machine,
       defaultProject: project === undefined || project.trim() === '' ? undefined : project,
       currentBranch: () => this.deps.git.currentBranch(cwd),
+      index: this.deps.indexes(roots),
       activity: [],
       warnings: [...roots.warnings],
     };

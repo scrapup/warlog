@@ -21,7 +21,7 @@ import { composeCore, composeLogger, staticRedactions } from './compose-core.ts'
  * @returns Its collaborators.
  */
 export function composeCli(operations?: OperationsFactory): CliDeps {
-  const core = composeCore(operations);
+  const core = composeCore(operations === undefined ? {} : { operations });
   return {
     ...core,
     io: {
@@ -37,7 +37,7 @@ export function composeCli(operations?: OperationsFactory): CliDeps {
     startMcp: async () => {
       // Loaded on demand: the MCP SDK stays out of every other command's startup.
       const { startMcpServer } = await import('./compose-mcp.ts');
-      await startMcpServer(core);
+      await startMcpServer(operations);
     },
   };
 }

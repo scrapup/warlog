@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
+import { LiveIndexSource } from '../../../../src/core/index/index-source.ts';
+import { StoreIndex } from '../../../../src/core/index/store-index.ts';
 import { StoreContextFactory } from '../../../../src/core/mediator/store-context-factory.ts';
 import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
 import { FakeGitClient } from '../../../support/fakes/fake-git-client.ts';
@@ -42,6 +44,7 @@ function setup(vars: Record<string, string> = {}) {
     clock: new FixedClock(),
     ids: new SequentialIds(),
     machine: new FixedMachineId(),
+    indexes: () => new LiveIndexSource(new StoreIndex()),
   });
   return { factory, resolved, git };
 }
@@ -71,6 +74,7 @@ describe('store context factory', () => {
       clock: new FixedClock(),
       ids: new SequentialIds(),
       machine: new FixedMachineId(),
+      indexes: () => new LiveIndexSource(new StoreIndex()),
     });
     await expect(factory.create()).rejects.toMatchObject({ code: 'VALIDATION' });
   });
