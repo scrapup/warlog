@@ -4,7 +4,7 @@ import { MAX_STORE_FILE_BYTES } from '../../../../src/core/index/file-loader.ts'
 import { IndexBuilder } from '../../../../src/core/index/index-builder.ts';
 import { stringifyFrontMatter } from '../../../../src/core/storage/front-matter-codec.ts';
 import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
-import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
+import { MemoryFileSystem, norm } from '../../../support/fakes/memory-file-system.ts';
 import { FixedClock } from '../../../support/fakes/simple-fakes.ts';
 import { GLOBAL_ROOT, REPO_ROOT } from '../../../support/store-fixture.ts';
 
@@ -165,7 +165,7 @@ describe('IndexBuilder', () => {
   it('reports unreadable files as invalid with their system code', async () => {
     const fs = store();
     const path = repo('projects', P, 'tasks', `${T1}.md`);
-    fs.failReads = new Set([path]);
+    fs.failReads.add(path);
     const { index } = await build(fs);
     expect(index.excluded.invalidFiles()).toMatchObject([{ path, reason: 'unreadable:EACCES' }]);
   });
@@ -204,7 +204,7 @@ describe('IndexBuilder.reload', () => {
     const fs = store();
     const builder = new IndexBuilder({ fs, clock: new FixedClock() });
     const { index } = await builder.build(ROOTS);
-    for (const key of [...fs.files.keys()].filter((k) => k.startsWith(repo('projects', P)))) {
+    for (const key of [...fs.files.keys()].filter((k) => k.startsWith(norm(repo('projects', P))))) {
       fs.files.delete(key);
     }
     await builder.reload(index, ROOTS, repo('projects', P));
