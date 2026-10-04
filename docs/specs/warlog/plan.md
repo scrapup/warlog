@@ -342,6 +342,7 @@ given (WL-12).
 | File input | `--file <path>` / `--file -`; `.yaml`/`.yml`/`.json`; `.md` → front matter = fields, body = `description`/`content`. Merge order: file < flags. Parsed with YAML 1.2; errors carry `file:line:col field: message` (WL-36) |
 | `--validate` | Runs Context + Validation + SecretGuard, skips handler; exit 0 or 3 |
 | `--format` | `table | yaml | json`; `var get` prints scalars raw (WL-39) |
+| Output options | `--format`/`--fields` (MCP `format`/`fields`) are reserved input names (registry check). A query with output options that do not fit its result fails with `VALIDATION`; a command has already written, so it returns its default rendering plus warning `output.options_ignored` (WL-38) |
 | Help | `--help` at root, group and operation level from registry (parameters with type, required, default, description; example input file) (WL-37) |
 | Exit codes | `0` ok · `1` error / `SECRET_REJECTED` / `INVALID_FILE` / `NO_REPO_CONTEXT` · `2` `NOT_FOUND` · `3` `VALIDATION` · `4` `CONFLICT` (WL-39, WL-40) |
 

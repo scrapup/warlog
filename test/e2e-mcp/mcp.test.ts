@@ -47,9 +47,12 @@ describe('warlog mcp from the packed tarball', () => {
   }, 30_000);
 
   it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', async () => {
-    await mcp().client.callTool({ name: 'nope', arguments: {} });
-    await mcp().client.listTools();
-    expect(mcp().errors).toEqual([]);
-    expect(mcp().stderr()).toBe('');
+    const current = mcp();
+    await current.client.callTool({ name: 'nope', arguments: {} });
+    await current.client.listTools();
+    await current.close();
+    session = undefined;
+    expect(current.errors).toEqual([]);
+    expect(current.stderr()).toBe('');
   }, 30_000);
 });

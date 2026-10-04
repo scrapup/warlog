@@ -49,7 +49,7 @@ function cli(args: readonly string[]) {
 /**
  * Lists files under a directory, recursively.
  * @param dir - Directory.
- * @returns Relative paths.
+ * @returns File paths (prefixed by `dir`).
  */
 function filesUnder(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
@@ -99,11 +99,13 @@ describe('interface parity over the full registry', () => {
     30_000,
   );
 
-  it('[WL-18] records command activity in the isolated store only', () => {
-    const { iso: env } = setup();
-    expect(filesUnder(join(env.store)).some((f) => f.includes('activity'))).toBe(true);
+  it('[WL-18] records command activity in the isolated store only', async () => {
+    const { iso: env, mcp } = setup();
+    await mcp.client.callTool({ name: 'fixture_note_create', arguments: { title: 'activity' } });
+    expect(cli(['fixture', 'note-create', '--title', 'activity']).status).toBe(0);
+    expect(filesUnder(env.store).filter((f) => f.includes('activity')).length).toBeGreaterThan(0);
     expect(filesUnder(env.cwd)).toEqual([]);
-  });
+  }, 30_000);
 
   it('[WL-35] keeps standard output free of anything but MCP frames', async () => {
     const { mcp } = setup();

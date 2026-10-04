@@ -5,8 +5,8 @@ import { McpServerAdapter, callTool } from '../../../../src/adapters/mcp/mcp-ser
 import { toToolDescriptor } from '../../../../src/adapters/mcp/tool-mapper.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
 import { fixtureDeps } from '../../../support/fixture-deps.ts';
-import { resultText } from '../../../support/mcp-client.ts';
 import { FIXTURE_OPERATIONS, fixtureOperation } from '../../../support/fixture-operations.ts';
+import { resultText } from '../../../support/mcp-client.ts';
 
 /**
  * Connects a client to the adapter over an in-memory transport.
@@ -20,7 +20,6 @@ async function connect(operations: readonly OperationDefinition[] = FIXTURE_OPER
   await client.connect(clientSide);
   return client;
 }
-
 
 describe('MCP adapter', () => {
   it('[WL-35] lists one tool per registry entry with strict input schemas and output options', async () => {
@@ -73,17 +72,23 @@ describe('MCP adapter', () => {
     expect(resultText(await callTool(fixtureDeps([warn]), 'fixture_echo', { text: 'x' }))).toBe('ok\n\nwarnings: W1');
   });
 
-  it('logs transport errors, start and close', async () => {
+  it('[WL-40] logs transport errors with codes only, plus start and close', async () => {
     const deps = fixtureDeps();
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     const server = await new McpServerAdapter({ ...deps, version: '1.2.3' }).connect(serverSide);
     server.onerror?.(new TypeError('bad frame'));
     await clientSide.close();
-    expect(deps.store.logger.events.map((e) => [e.level, e.event])).toEqual([
-      ['debug', 'mcp.started'],
-      ['error', 'mcp.transport_error'],
-      ['debug', 'mcp.closed'],
+    expect(deps.store.logger.events).toEqual([
+      { level: 'debug', event: 'mcp.started', fields: { version: '1.2.3' } },
+      { level: 'error', event: 'mcp.transport_error', fields: { error_code: 'UNEXPECTED', error_name: 'TypeError' } },
+      { level: 'debug', event: 'mcp.closed', fields: {} },
     ]);
+  });
+
+  it('[WL-38] keeps a successful command when its output options cannot be applied, with a warning', async () => {
+    const result = await callTool(fixtureDeps(), 'fixture_note_create', { title: 'T', format: 'table' });
+    expect(result.isError).toBeUndefined();
+    expect(resultText(result)).toMatch(/title: T[\s\S]*\n\nwarnings: output\.options_ignored$/);
   });
 
   it('describes operations without required fields without a required list', () => {

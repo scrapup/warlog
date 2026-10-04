@@ -13,7 +13,7 @@ export interface McpSession {
   readonly stderr: () => string;
   /** Transport errors (e.g. non-MCP bytes on standard output). */
   readonly errors: Error[];
-  /** Closes the client and the child process. */
+  /** Closes the client and the child process, then waits for standard error to drain (≤ 2 s). */
   readonly close: () => Promise<void>;
 }
 
@@ -46,6 +46,10 @@ export async function connectMcp(args: readonly string[], options: McpSessionOpt
   transport.stderr?.on('data', (chunk: Buffer) => {
     stderr += chunk.toString('utf8');
   });
+  const drained = new Promise<void>((resolve) => {
+    transport.stderr?.on('end', () => resolve());
+    transport.stderr?.on('close', () => resolve());
+  });
   const errors: Error[] = [];
   const client = new Client({ name: 'warlog-test', version: '0' });
   client.onerror = (error) => errors.push(error);
@@ -61,7 +65,11 @@ export async function connectMcp(args: readonly string[], options: McpSessionOpt
   } finally {
     clearTimeout(timer);
   }
-  return { client, stderr: () => stderr, errors, close: () => client.close() };
+  const close = async (): Promise<void> => {
+    await client.close();
+    await Promise.race([drained, new Promise((resolve) => setTimeout(resolve, 2_000).unref())]);
+  };
+  return { client, stderr: () => stderr, errors, close };
 }
 
 /**

@@ -95,8 +95,8 @@ const OPTIONAL_WRAPPERS = new Set(['optional', 'default', 'prefault']);
  * @param schema - A zod schema.
  * @returns Its introspection view.
  */
-function asSchemaNode(schema: unknown): SchemaNode {
-  return schema as SchemaNode;
+function asSchemaNode(schema: z.core.$ZodType): SchemaNode {
+  return schema as unknown as SchemaNode;
 }
 
 /**

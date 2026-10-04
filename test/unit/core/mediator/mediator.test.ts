@@ -1,17 +1,17 @@
 import { describe, expect, it } from '@jest/globals';
 import { z } from 'zod';
+import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
+import { rootRedactions } from '../../../../src/core/mediator/behaviors/error-mapping.behavior.ts';
 import { ValidationBehavior } from '../../../../src/core/mediator/behaviors/validation.behavior.ts';
 import { Mediator } from '../../../../src/core/mediator/mediator.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
-import { OUTPUT_OPTION_KEYS } from '../../../../src/adapters/shared/output-options.ts';
-import { OperationRegistry, RESERVED_INPUT_KEYS } from '../../../../src/core/mediator/operation-registry.ts';
-import { rootRedactions } from '../../../../src/core/mediator/behaviors/error-mapping.behavior.ts';
+import { OperationRegistry } from '../../../../src/core/mediator/operation-registry.ts';
 import { buildPipeline } from '../../../../src/core/mediator/pipeline-factory.ts';
 import { SecretGuard } from '../../../../src/core/security/secret-guard.ts';
 import { FixtureContextFactory } from '../../../support/fixture-context.ts';
 import { fixtureDeps } from '../../../support/fixture-deps.ts';
-import { GLOBAL_ROOT, memoryStore } from '../../../support/store-fixture.ts';
-import { FIXTURE_OPERATIONS } from '../../../support/fixture-operations.ts';
+import { FIXTURE_OPERATIONS, fixtureOperation } from '../../../support/fixture-operations.ts';
+import { GLOBAL_ROOT, REPO_ROOT, memoryStore } from '../../../support/store-fixture.ts';
 
 const TOKEN = ['gh', 'p_'].join('') + 'a1B2'.repeat(9);
 
@@ -81,11 +81,27 @@ describe('Mediator pipeline', () => {
     ]);
   });
 
-  it('[WL-40] redacts the store roots of the call', async () => {
-    const error = await setup().mediator.send('fixture_fail', { code: 'NOT_FOUND' }).catch((e: unknown) => e);
+  it('[WL-40] replaces the store roots of the call with placeholders', async () => {
+    const failing: OperationDefinition = {
+      ...fixtureOperation('fixture_fail'),
+      handler: {
+        handle: async () => {
+          throw new WarlogError('NOT_FOUND', `missing ${GLOBAL_ROOT}/a`, { global: `${GLOBAL_ROOT}/x`, repo: `${REPO_ROOT}/y` });
+        },
+      },
+    };
+    const error = await fixtureDeps([failing]).mediator.send('fixture_fail', { code: 'NOT_FOUND' }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ message: 'missing <store>/a', details: { global: '<store>/x', repo: '<repo-store>/y' } });
+  });
+
+  it('[WL-40] orders repository redactions before the global root', () => {
+    const repository = { root: '/r/.warlog', key: 'k', mode: 'in-repo' as const, mainWorktree: '/r' };
     expect(rootRedactions(undefined)).toEqual([]);
-    expect(rootRedactions({ global: '/g', warnings: [] })).toEqual([['/g', '<store>']]);
-    expect(JSON.stringify(error)).not.toContain(GLOBAL_ROOT);
+    expect(rootRedactions({ global: '/g', repository, warnings: [] })).toEqual([
+      ['/r/.warlog', '<repo-store>'],
+      ['/r', '<repo>'],
+      ['/g', '<store>'],
+    ]);
   });
 
   it('[WL-09] logs a rejected secret as a warning with codes only', async () => {
@@ -150,10 +166,6 @@ describe('OperationRegistry', () => {
       );
     },
   );
-
-  it('[WL-35] reserves every output option key', () => {
-    expect(OUTPUT_OPTION_KEYS.every((k) => RESERVED_INPUT_KEYS.includes(k))).toBe(true);
-  });
 
   it('accepts a schema made strict by the registry check', () => {
     expect(() => new OperationRegistry([{ ...base, name: 'loose', action: 'loose', input: z.object({ a: z.string() }), examples: [{ a: 'x' }] }])).not.toThrow();

@@ -5,6 +5,22 @@ import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
 import { FakeGitClient } from '../../../support/fakes/fake-git-client.ts';
 import { FixedClock, FixedMachineId, MemoryEnv, SequentialIds } from '../../../support/fakes/simple-fakes.ts';
 
+/** Git fake recording the directory of each branch lookup. */
+class RecordingGit extends FakeGitClient {
+  /** Directories asked for their branch. */
+  readonly branchCalls: string[] = [];
+
+  /**
+   * Records the call.
+   * @param cwd - Directory.
+   * @returns The canned branch.
+   */
+  override async currentBranch(cwd?: string): Promise<string | undefined> {
+    this.branchCalls.push(cwd ?? '');
+    return super.currentBranch();
+  }
+}
+
 /**
  * Builds a factory over fixed roots.
  * @param vars - Environment variables.
@@ -28,22 +44,6 @@ function setup(vars: Record<string, string> = {}) {
     machine: new FixedMachineId(),
   });
   return { factory, resolved, git };
-}
-
-/** Git fake recording the directory of each branch lookup. */
-class RecordingGit extends FakeGitClient {
-  /** Directories asked for their branch. */
-  readonly branchCalls: string[] = [];
-
-  /**
-   * Records the call.
-   * @param cwd - Directory.
-   * @returns The canned branch.
-   */
-  override async currentBranch(cwd?: string): Promise<string | undefined> {
-    this.branchCalls.push(cwd ?? '');
-    return super.currentBranch();
-  }
 }
 
 describe('store context factory', () => {

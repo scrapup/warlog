@@ -59,7 +59,7 @@ export class ErrorMappingBehavior implements Behavior {
     try {
       return await next();
     } catch (error: unknown) {
-      const mapped: WarlogError = toWarlogError(error);
+      const mapped = toWarlogError(error);
       this.logger.log(LEVELS[mapped.code] ?? 'debug', 'op.failed', { op: request.definition.name, ...errorFields(error) });
       throw redactError(mapped, [...rootRedactions(request.context?.roots), ...this.redactions]);
     }

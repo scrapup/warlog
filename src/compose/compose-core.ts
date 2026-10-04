@@ -12,7 +12,6 @@ import { StderrJsonLogger, parseLogLevel } from '../core/adapters/stderr-json-lo
 import { SystemClock } from '../core/adapters/system-clock.ts';
 import { UlidGenerator } from '../core/adapters/ulid-generator.ts';
 import type { Redaction } from '../core/errors/path-redactor.ts';
-import type { Env } from '../core/ports/env.port.ts';
 import { GitCliClient } from '../core/git/git-cli-client.ts';
 import { resolveGitBinary } from '../core/git/git-binary.ts';
 import { RepoLocator } from '../core/git/repo-locator.ts';
@@ -20,6 +19,8 @@ import { Mediator } from '../core/mediator/mediator.ts';
 import { OperationRegistry } from '../core/mediator/operation-registry.ts';
 import { buildPipeline } from '../core/mediator/pipeline-factory.ts';
 import { StoreContextFactory } from '../core/mediator/store-context-factory.ts';
+import type { Env } from '../core/ports/env.port.ts';
+import type { Logger } from '../core/ports/logger.port.ts';
 import { Presenter } from '../core/presenter/presenter.ts';
 import { PathGuard } from '../core/security/path-guard.ts';
 import { isPlainRecord } from '../core/security/plain-record.ts';
@@ -73,13 +74,22 @@ export function staticRedactions(env: Env): Redaction[] {
 }
 
 /**
+ * The process logger: JSON lines on standard error at `WARLOG_LOG_LEVEL`.
+ * @param env - Environment.
+ * @returns The logger.
+ */
+export function composeLogger(env: Env): Logger {
+  return new StderrJsonLogger(parseLogLevel(env.get('WARLOG_LOG_LEVEL')));
+}
+
+/**
  * Wires the call path.
  * @param operations - Registry content factory (default: the product operations).
  * @returns The core.
  */
 export function composeCore(operations: OperationsFactory = productOperations): Core {
   const env = new ProcessEnv();
-  const logger = new StderrJsonLogger(parseLogLevel(env.get('WARLOG_LOG_LEVEL')));
+  const logger = composeLogger(env);
   const fs = new NodeFileSystem({ logger });
   const clock = new SystemClock();
   const git = new GitCliClient({ logger, binary: resolveGitBinary(process.platform, env.get('PATH'), existsSync) });

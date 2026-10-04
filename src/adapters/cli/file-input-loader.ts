@@ -94,6 +94,8 @@ function splitMarkdown(text: string, source: string): MarkdownParts {
 
 /**
  * Converts a parsed document to plain values; an alias bomb is an input error, not a failure.
+ * Documents with parse errors or warnings were already rejected by {@link parseAt}, so `toJS`
+ * only throws here when the aliases expand beyond {@link MAX_ALIAS_COUNT}.
  * @param parsed - Parsed YAML.
  * @param source - File name.
  * @returns The plain value (`{}` for an empty document).

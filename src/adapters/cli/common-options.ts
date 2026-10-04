@@ -1,6 +1,7 @@
 /**
- * Options every operation command accepts (WL-36, WL-38): the single source for the parser, the
- * help text and the reserved flag names.
+ * Options every operation command accepts (WL-36, WL-38): the single source for the parser and
+ * the help text. Their names are reserved for input fields by `RESERVED_INPUT_KEYS` in the
+ * registry (core cannot import adapters); a test keeps both lists aligned.
  */
 import { OUTPUT_FORMATS } from '../shared/output-options.ts';
 

@@ -58,6 +58,13 @@ describe('command line: flags and output', () => {
     expect(deps.store.fs.files.size).toBeGreaterThan(0);
   });
 
+  it('[WL-38] keeps a successful command when --format table does not fit its result, with a warning', async () => {
+    const { code, out, err } = await run(['fixture', 'note-create', '--title', 'T', '--format', 'table']);
+    expect(code).toBe(0);
+    expect(out).toContain('title: T');
+    expect(err).toBe('warnings: output.options_ignored\n');
+  });
+
   it('[WL-38] rejects invalid output options of a query with exit 3', async () => {
     const { code, err } = await run(['fixture', 'echo', '--text', 'x', '--fields', 'bogus']);
     expect(code).toBe(3);
@@ -176,15 +183,17 @@ describe('command line: exit codes and errors', () => {
   });
 
   it.each([
-    ['an unknown flag', ['fixture', 'echo', '--bogus'], "unknown option '--bogus'"],
-    ['an unknown command', ['nope'], "unknown command 'nope'"],
-    ['an extra argument', ['fixture', 'echo', 'extra'], 'too many arguments'],
-    ['an invalid --format', ['fixture', 'echo', '--text', 'x', '--format', 'xml'], 'xml'],
-  ])('[WL-39] [WL-40] exits 3 on %s with a stable validation error', async (_label, argv, message) => {
+    ['an unknown flag', ['fixture', 'echo', '--bogus'], "unknown option '--bogus'", 'unknown_option'],
+    ['an unknown command', ['nope'], "unknown command 'nope'", 'unknown_command'],
+    ['an extra argument', ['fixture', 'echo', 'extra'], 'too many arguments', 'too_many_arguments'],
+    ['an invalid --format', ['fixture', 'echo', '--text', 'x', '--format', 'xml'], "argument 'xml' is invalid", 'invalid_value'],
+    ['a flag without its value', ['fixture', 'echo', '--text'], "option '--text <value>' argument missing", 'missing_value'],
+  ])('[WL-39] [WL-40] exits 3 on %s with a stable validation error', async (_label, argv, message, reason) => {
     const { code, err } = await run(argv);
     expect(code).toBe(3);
     expect(err).toMatch(/^VALIDATION: /);
     expect(err).toContain(message);
+    expect(err).toContain(`reason: ${reason}`);
   });
 
   it('[WL-40] reports unreadable standard input as INVALID_FILE with exit 1', async () => {

@@ -5,7 +5,7 @@
 import { Command, CommanderError, Option } from 'commander';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
-import { executeOperation, failure, formatError } from '../shared/execute-operation.ts';
+import { executeOperation, formatError, toLoggedFailure } from '../shared/execute-operation.ts';
 import type { ExecuteDeps, ExecuteOutcome } from '../shared/execute-operation.ts';
 import { collectInput, locateIssues } from './cli-input.ts';
 import type { CollectedInput, FlagBinding, InputReader } from './cli-input.ts';
@@ -57,6 +57,15 @@ interface OperationCommand {
   /** Exit code holder. */
   readonly state: RunState;
 }
+
+/** Reasons of command-line usage errors, by parser code. */
+const USAGE_REASONS: Readonly<Record<string, string>> = {
+  'commander.unknownOption': 'unknown_option',
+  'commander.unknownCommand': 'unknown_command',
+  'commander.excessArguments': 'too_many_arguments',
+  'commander.invalidArgument': 'invalid_value',
+  'commander.optionMissingArgument': 'missing_value',
+};
 
 /** Commander outcomes that are not usage errors. */
 const CLEAN_EXITS = new Set(['commander.helpDisplayed', 'commander.version']);
@@ -125,7 +134,7 @@ async function runOperation(op: OperationCommand, bindings: readonly FlagBinding
   try {
     input = await collectInput(bindings, opts, deps.io);
   } catch (error: unknown) {
-    return report(deps.io, failure(deps, def.name, error));
+    return report(deps.io, toLoggedFailure(deps, def.name, error));
   }
   const outcome = await executeOperation(deps, def.name, input.args, { dryRun: opts['validate'] === true });
   return report(deps.io, outcome.ok ? outcome : { ok: false, error: locateIssues(outcome.error, input) });
@@ -196,7 +205,7 @@ function parserExit(io: CliIo, error: CommanderError): number {
     return error.exitCode;
   }
   const message = error.message.replace(/^error: /, '');
-  writeLine(io, 'stderr', formatError(new WarlogError('VALIDATION', message, { reason: error.code.replace(/^commander\./, '') })));
+  writeLine(io, 'stderr', formatError(new WarlogError('VALIDATION', message, { reason: USAGE_REASONS[error.code] ?? 'usage' })));
   return EXIT_VALIDATION;
 }
 

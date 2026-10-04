@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import { toIssues } from '../../core/mediator/behaviors/validation.behavior.ts';
+import { isPlainRecord } from '../../core/security/plain-record.ts';
 import type { PresentOptions } from '../../core/presenter/presenter.ts';
 
 /** Output formats. */
@@ -36,7 +37,7 @@ export interface SplitInput {
  * @throws {WarlogError} `VALIDATION` when the arguments are not an object or the output options are invalid.
  */
 export function splitOutputOptions(args: unknown): SplitInput {
-  if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) {
+  if (args !== undefined && !isPlainRecord(args)) {
     throw new WarlogError('VALIDATION', 'arguments must be an object', { issues: [{ path: '', message: 'expected an object' }] });
   }
   const entries = Object.entries(args ?? {});

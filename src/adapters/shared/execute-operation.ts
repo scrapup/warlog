@@ -58,7 +58,17 @@ export interface ExecuteOptions {
 }
 
 /** Warning returned when a command succeeded but its output options could not be applied. */
-export const OUTPUT_IGNORED = 'output.options_ignored';
+export const OUTPUT_OPTIONS_IGNORED = 'output.options_ignored' as const;
+
+/** What to render. */
+interface RenderRequest {
+  /** Operation. */
+  readonly definition: OperationDefinition;
+  /** Result. */
+  readonly result: OperationResult;
+  /** Output options. */
+  readonly output: PresentOptions;
+}
 
 /**
  * Formats an error for a transport: `CODE: message` followed by YAML details.
@@ -71,14 +81,18 @@ export function formatError(error: WarlogError): string {
 }
 
 /**
- * Turns any failure of a call into a logged, redacted, stable error.
+ * Logs a failure raised outside the mediator (unexpected errors at `error`, stable categories at
+ * `debug` with the fields of their cause) and returns it as a redacted, stable error.
  * @param deps - Collaborators.
  * @param name - Operation name.
  * @param error - Thrown value.
  * @returns The failure.
  */
-export function failure(deps: Pick<ExecuteDeps, 'logger' | 'redactions'>, name: string, error: unknown): ExecuteFailure {
-  if (!(error instanceof WarlogError)) {
+export function toLoggedFailure(deps: Pick<ExecuteDeps, 'logger' | 'redactions'>, name: string, error: unknown): ExecuteFailure {
+  if (error instanceof WarlogError) {
+    const cause = error.cause === undefined ? {} : { cause: errorFields(error.cause) };
+    deps.logger.log('debug', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error), ...cause });
+  } else {
     deps.logger.log('error', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error) });
   }
   return { ok: false, error: redactError(toWarlogError(error), deps.redactions) };
@@ -89,20 +103,20 @@ export function failure(deps: Pick<ExecuteDeps, 'logger' | 'redactions'>, name: 
  * (unknown field, table for a non-list), the default rendering is returned with a warning
  * instead of an error, so the caller does not retry a write that succeeded.
  * @param deps - Collaborators.
- * @param definition - Operation.
- * @param result - Result.
- * @param output - Output options.
+ * @param request - Operation, result and output options.
  * @returns Text and extra warnings.
  * @throws {WarlogError} `VALIDATION` for a query with invalid output options.
  */
-function render(deps: ExecuteDeps, definition: OperationDefinition, result: OperationResult, output: PresentOptions): ExecuteSuccess {
+function render(deps: ExecuteDeps, request: RenderRequest): ExecuteSuccess {
+  const { definition, result, output } = request;
   try {
     return { ok: true, text: deps.presenter.present(result, definition.defaultFormat, output), warnings: [] };
   } catch (error: unknown) {
     if (definition.kind !== 'command' || !isWarlogError(error, 'VALIDATION')) {
       throw error;
     }
-    return { ok: true, text: deps.presenter.present(result, definition.defaultFormat), warnings: [OUTPUT_IGNORED] };
+    deps.logger.log('debug', 'output.options_ignored', { op: definition.name, ...errorFields(error) });
+    return { ok: true, text: deps.presenter.present(result, definition.defaultFormat), warnings: [OUTPUT_OPTIONS_IGNORED] };
   }
 }
 
@@ -122,9 +136,9 @@ export async function executeOperation(deps: ExecuteDeps, name: string, args: un
     if (response.result === undefined) {
       return { ok: true, text: 'valid', warnings: response.warnings };
     }
-    const rendered = render(deps, definition, response.result, output);
+    const rendered = render(deps, { definition, result: response.result, output });
     return { ...rendered, warnings: [...response.warnings, ...rendered.warnings] };
   } catch (error: unknown) {
-    return failure(deps, name, error);
+    return toLoggedFailure(deps, name, error);
   }
 }
