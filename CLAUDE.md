@@ -19,14 +19,22 @@ events; semantic search; staging/committing/pushing `.warlog/` changes.
 
 ## Current state
 
-Package scaffold and quality gates (US-93): `src/bin/warlog.ts` (prints `--version` only),
+Package scaffold and quality gates (US-93): `src/bin/warlog.ts` (entry point),
 `eslint.config.js`, `jest.config.ts` (projects `unit`, `integration`, `e2e-cli`, `e2e-mcp`,
 `bench`), `scripts/rules-coverage/**` (rule proof check) and `scripts/verify-local.ts`; CI job
 `verify` on Linux, macOS and Windows. Core storage foundation (US-94): `src/core/errors` (`WarlogError`), `src/core/ports` (side-effect
 interfaces), `src/core/adapters` (Node implementations), `src/core/security` (linear matchers,
 identifier validation, `PathGuard`), `src/core/git` (read-only `GitCliClient`, repository locator),
 `src/core/storage` (YAML/front-matter codecs, store roots, entity paths, `EntityFileRepository`,
-`ActivityLog`). Test doubles live in `test/support/fakes`. Document the real structure here as it
+`ActivityLog`). Mediator and interfaces (US-95): `src/core/mediator` (registry, pipeline,
+behaviors ErrorMapping → Context → Validation → SecretGuard → Activity, `StoreContextFactory`),
+`src/core/presenter` (table/YAML/JSON rendering, field projection, cursors),
+`src/adapters/shared/execute-operation.ts` (the single call path of both interfaces),
+`src/adapters/mcp` (low-level SDK `Server`, one tool per registry entry), `src/adapters/cli`
+(commander program generated from the registry: flags, `--file`, `--json-input`, `--validate`,
+help, exit codes), `src/compose/**` (composition roots) and `src/domain/operations.ts` (product
+registry content, empty until US-97). Test doubles live in `test/support/fakes`; fixture
+operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.
 
@@ -82,7 +90,7 @@ arrives with US-103.
 1. Definition (`*.operation.ts`) with zod input, description and an example input.
 2. Handler (`*.handler.ts`) with domain logic only; dependencies via constructor.
 3. Unit tests named with the rule IDs it proves; integration/e2e when it touches a flow.
-4. Register it; the interface-parity test must stay green.
+4. Register it in `src/domain/operations.ts`; the interface-parity test must stay green.
 5. Regenerate the skill catalog (`npm run gen:skill`) and commit the result.
 6. Update the three READMEs when user-visible behavior changes.
 

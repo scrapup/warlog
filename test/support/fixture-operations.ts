@@ -110,3 +110,17 @@ export const FIXTURE_OPERATIONS: OperationDefinition[] = [
     }),
   },
 ];
+
+/**
+ * Returns one fixture operation.
+ * @param name - Operation name.
+ * @returns The definition.
+ * @throws {Error} When the fixture does not exist.
+ */
+export function fixtureOperation(name: string): OperationDefinition {
+  const def = FIXTURE_OPERATIONS.find((d) => d.name === name);
+  if (def === undefined) {
+    throw new Error(`no fixture operation ${name}`);
+  }
+  return def;
+}

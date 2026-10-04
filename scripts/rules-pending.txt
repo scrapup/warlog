@@ -26,12 +26,6 @@ WL-31  # US-101
 WL-32  # US-101
 WL-33  # US-101
 WL-34  # US-101
-WL-35  # US-95
-WL-36  # US-95
-WL-37  # US-95
-WL-38  # US-95
-WL-39  # US-95
-WL-40  # US-95
 WL-44  # US-96
 WL-45  # US-96
 WL-47  # US-97 (note_search) and US-99 (memory_recall)
