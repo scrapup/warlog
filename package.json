@@ -25,7 +25,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint --max-warnings 0 .",
+    "test:unit": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects unit",
+    "test:integration": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects integration",
+    "test:e2e": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects e2e-cli e2e-mcp",
+    "bench": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects bench --passWithNoTests",
+    "rules:coverage": "node scripts/rules-coverage.ts",
+    "verify:local": "node scripts/verify-local.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.0",
@@ -36,7 +43,15 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@jest/globals": "30.5.2",
+    "@types/jest": "30.0.0",
     "@types/node": "22.20.5",
-    "typescript": "6.0.3"
+    "eslint": "10.12.0",
+    "eslint-plugin-jsdoc": "65.0.2",
+    "jest": "30.5.2",
+    "ts-jest": "29.4.14",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0"
   }
 }
