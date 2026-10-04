@@ -1,0 +1,19 @@
+[
+  { "pattern": "src/**/*.ts", "path": "src/a.ts", "match": true },
+  { "pattern": "src/**/*.ts", "path": "src/core/deep/a.ts", "match": true },
+  { "pattern": "src/**/*.ts", "path": "src/a.js", "match": false },
+  { "pattern": "src/*.ts", "path": "src/core/a.ts", "match": false },
+  { "pattern": "src/*.ts", "path": "src/a.ts", "match": true },
+  { "pattern": "**", "path": "any/thing/at/all", "match": true },
+  { "pattern": "**/README.md", "path": "README.md", "match": true },
+  { "pattern": "**/README.md", "path": "docs/README.md", "match": true },
+  { "pattern": "docs/**", "path": "docs/specs/x.md", "match": true },
+  { "pattern": "a?c", "path": "abc", "match": true },
+  { "pattern": "a?c", "path": "a/c", "match": false },
+  { "pattern": "*", "path": "", "match": true },
+  { "pattern": "", "path": "", "match": true },
+  { "pattern": "", "path": "x", "match": false },
+  { "pattern": "test/*/x.ts", "path": "test/unit/x.ts", "match": true },
+  { "pattern": "*.test.ts", "path": "a.test.ts", "match": true },
+  { "pattern": "*.test.ts", "path": "dir/a.test.ts", "match": false }
+]

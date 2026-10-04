@@ -1,0 +1,13 @@
+[
+  { "name": "01J0000000000000000000000A.md", "class": "entity" },
+  { "name": "task (conflicted copy 2026-10-03).md", "class": "conflict_copy" },
+  { "name": "task.sync-conflict-20261003-120000-ABCDEFG.md", "class": "conflict_copy" },
+  { "name": "task 2.md", "class": "conflict_copy" },
+  { "name": "forge.parallel 2.yaml", "class": "conflict_copy" },
+  { "name": "my notes.md", "class": "entity" },
+  { "name": "plan 2b.md", "class": "entity" },
+  { "name": " 2.md", "class": "entity" },
+  { "name": "trailing .md", "class": "entity" },
+  { "name": ".task.md.tmp-123-abcd", "class": "temp" },
+  { "name": ".hidden.md", "class": "entity" }
+]
