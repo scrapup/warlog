@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { StoreContextFactory } from '../../../../src/core/mediator/store-context-factory.ts';
 import type { StoreRoots } from '../../../../src/core/storage/store-roots.ts';
 import { FakeGitClient } from '../../../support/fakes/fake-git-client.ts';
@@ -11,6 +12,7 @@ import { FixedClock, FixedMachineId, MemoryEnv, SequentialIds } from '../../../s
  */
 function setup(vars: Record<string, string> = {}) {
   const resolved: string[] = [];
+  const git = new RecordingGit({ branch: 'feature' });
   const roots: StoreRoots = { global: '/home/u/.warlog', warnings: ['git.unavailable'] };
   const factory = new StoreContextFactory({
     resolver: {
@@ -20,12 +22,28 @@ function setup(vars: Record<string, string> = {}) {
       },
     },
     env: new MemoryEnv(vars, '/home/u', '/work/repo'),
-    git: new FakeGitClient({ branch: 'feature' }),
+    git,
     clock: new FixedClock(),
     ids: new SequentialIds(),
     machine: new FixedMachineId(),
   });
-  return { factory, resolved };
+  return { factory, resolved, git };
+}
+
+/** Git fake recording the directory of each branch lookup. */
+class RecordingGit extends FakeGitClient {
+  /** Directories asked for their branch. */
+  readonly branchCalls: string[] = [];
+
+  /**
+   * Records the call.
+   * @param cwd - Directory.
+   * @returns The canned branch.
+   */
+  override async currentBranch(cwd?: string): Promise<string | undefined> {
+    this.branchCalls.push(cwd ?? '');
+    return super.currentBranch();
+  }
 }
 
 describe('store context factory', () => {
@@ -41,10 +59,28 @@ describe('store context factory', () => {
     expect(first.defaultProject).toBeUndefined();
   });
 
+  it('propagates a failure to resolve the roots', async () => {
+    const factory = new StoreContextFactory({
+      resolver: {
+        resolve: async () => {
+          throw new WarlogError('VALIDATION', 'WARLOG_DIR must be an absolute path');
+        },
+      },
+      env: new MemoryEnv(),
+      git: new FakeGitClient(),
+      clock: new FixedClock(),
+      ids: new SequentialIds(),
+      machine: new FixedMachineId(),
+    });
+    await expect(factory.create()).rejects.toMatchObject({ code: 'VALIDATION' });
+  });
+
   it('reads the default project and resolves the current branch lazily', async () => {
-    const context = await setup({ WARLOG_PROJECT: 'warlog' }).factory.create();
+    const { factory, git } = setup({ WARLOG_PROJECT: 'warlog' });
+    const context = await factory.create();
     expect(context.defaultProject).toBe('warlog');
     expect(await context.currentBranch()).toBe('feature');
+    expect(git.branchCalls).toEqual(['/work/repo']);
     expect((await setup({ WARLOG_PROJECT: ' ' }).factory.create()).defaultProject).toBeUndefined();
   });
 });

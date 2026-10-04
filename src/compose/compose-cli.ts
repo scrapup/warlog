@@ -5,8 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { text } from 'node:stream/consumers';
 import type { CliDeps } from '../adapters/cli/cli-builder.ts';
 import { composeCore } from './compose-core.ts';
-import type { OperationsFactory } from './compose-core.ts';
-import { startMcpServer } from './compose-mcp.ts';
+import type { OperationsFactory } from '../domain/operations.ts';
 
 /**
  * Wires the command line.
@@ -27,6 +26,10 @@ export function composeCli(operations?: OperationsFactory): CliDeps {
       readFile: (path) => readFile(path, 'utf8'),
       readStdin: () => text(process.stdin),
     },
-    startMcp: () => startMcpServer(core),
+    startMcp: async () => {
+      // Loaded on demand: the MCP SDK stays out of every other command's startup.
+      const { startMcpServer } = await import('./compose-mcp.ts');
+      await startMcpServer(core);
+    },
   };
 }

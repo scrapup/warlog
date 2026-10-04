@@ -6,16 +6,19 @@ import type { OperationDefinition } from '../core/mediator/operation-definition.
 import type { FileSystem } from '../core/ports/file-system.port.ts';
 import type { Logger } from '../core/ports/logger.port.ts';
 
-/** Ports the domain operations are built with. */
-export interface DomainServices {
+/** Ports the domain operations are built with (refined when the first domain group lands). */
+export interface DomainDeps {
   /** File system. */
   readonly fs: FileSystem;
   /** Logger. */
   readonly logger: Logger;
 }
 
+/** Builds the registry content from the domain collaborators. */
+export type OperationsFactory = (deps: DomainDeps) => OperationDefinition[];
+
 /**
- * Builds the product operations. Domain groups take {@link DomainServices} as they land.
+ * Builds the product operations (an {@link OperationsFactory}; domain groups take {@link DomainDeps} as they land).
  * @returns The registry content.
  */
 export function productOperations(): OperationDefinition[] {

@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fieldSpecs } from '../../src/adapters/cli/flag-mapper.ts';
 import { FIXTURE_OPERATIONS } from '../support/fixture-operations.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
@@ -7,20 +9,53 @@ import { connectMcp, resultText } from '../support/mcp-client.ts';
 import type { McpSession } from '../support/mcp-client.ts';
 import { runNode } from '../support/run-node.ts';
 
-const BIN = `${process.cwd()}/test/support/fixture-bin.ts`;
+const BIN = join(process.cwd(), 'test', 'support', 'fixture-bin.ts');
+const OPERATIONS = FIXTURE_OPERATIONS.map((def) => [def.name, def] as const);
 
-let iso: IsolatedEnv;
-let mcp: McpSession;
+let iso: IsolatedEnv | undefined;
+let session: McpSession | undefined;
 
 beforeAll(async () => {
   iso = isolatedEnv();
-  mcp = await connectMcp([BIN, 'mcp'], { cwd: iso.cwd, env: iso.env });
+  session = await connectMcp([BIN, 'mcp'], { cwd: iso.cwd, env: iso.env });
 }, 30_000);
 
 afterAll(async () => {
-  await mcp.close();
-  iso.dispose();
+  await session?.close();
+  iso?.dispose();
 });
+
+/**
+ * Returns the isolated environment and MCP session, failing clearly when setup did not complete.
+ * @returns Environment and session.
+ */
+function setup(): { iso: IsolatedEnv; mcp: McpSession } {
+  if (iso === undefined || session === undefined) {
+    throw new Error('parity setup did not complete (see beforeAll failure)');
+  }
+  return { iso, mcp: session };
+}
+
+/**
+ * Runs the fixture command line in the isolated environment.
+ * @param args - Arguments.
+ * @returns The process result.
+ */
+function cli(args: readonly string[]) {
+  const { iso: env } = setup();
+  return runNode([BIN, ...args], { cwd: env.cwd, env: env.env, timeoutMs: 10_000 });
+}
+
+/**
+ * Lists files under a directory, recursively.
+ * @param dir - Directory.
+ * @returns Relative paths.
+ */
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => join(e.parentPath, e.name));
+}
 
 /**
  * Replaces run-dependent values (ULIDs, timestamps, machine ids) with placeholders.
@@ -36,31 +71,43 @@ function normalize(text: string): string {
 }
 
 describe('interface parity over the full registry', () => {
-  it('[WL-35] exposes every registry entry as an MCP tool with the CLI required parameters', async () => {
-    const { tools } = await mcp.client.listTools();
+  it('[WL-35] exposes exactly the registry entries as MCP tools', async () => {
+    const { tools } = await setup().mcp.client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(FIXTURE_OPERATIONS.map((d) => d.name).sort());
-    for (const def of FIXTURE_OPERATIONS) {
-      const tool = tools.find((t) => t.name === def.name);
-      const cliRequired = fieldSpecs(def.input).filter((s) => s.required).map((s) => s.key);
-      expect(tool?.inputSchema.required ?? []).toEqual(cliRequired);
-      const help = runNode([BIN, def.group, def.action, '--help'], { cwd: iso.cwd, env: iso.env, timeoutMs: 10_000 });
-      expect(help.status).toBe(0);
-      fieldSpecs(def.input).forEach((s) => expect(help.stdout).toContain(s.kind === 'complex' ? `(${s.key}:` : `--${s.flag}`));
-    }
-  }, 60_000);
+  });
+
+  it.each(OPERATIONS)('[WL-35] %s has the same required parameters in both interfaces', async (_name, def) => {
+    const { tools } = await setup().mcp.client.listTools();
+    const cliRequired = fieldSpecs(def.input).filter((s) => s.required).map((s) => s.key);
+    expect(tools.find((t) => t.name === def.name)?.inputSchema.required ?? []).toEqual(cliRequired);
+  }, 30_000);
+
+  it.each(OPERATIONS)('[WL-37] %s documents every parameter in its command-line help', (_name, def) => {
+    const help = cli([def.group, def.action, '--help']);
+    expect(help.status).toBe(0);
+    fieldSpecs(def.input).forEach((s) => expect(help.stdout).toContain(s.kind === 'complex' ? `(${s.key}:` : `--${s.flag}`));
+  }, 30_000);
 
   it.each(FIXTURE_OPERATIONS.flatMap((def) => def.examples.map((example) => [def.name, def, example] as const)))(
     '[WL-35] [WL-40] %s returns the same normalized output and error through both interfaces',
     async (_name, def, example) => {
-      const viaMcp = await mcp.client.callTool({ name: def.name, arguments: { ...example } });
-      const cli = runNode([BIN, def.group, def.action, '--json-input', JSON.stringify(example)], { cwd: iso.cwd, env: iso.env, timeoutMs: 10_000 });
-      expect(cli.status === 0).toBe(viaMcp.isError !== true);
-      expect(normalize(cli.status === 0 ? cli.stdout : cli.stderr)).toBe(normalize(resultText(viaMcp)));
+      const viaMcp = await setup().mcp.client.callTool({ name: def.name, arguments: { ...example } });
+      const viaCli = cli([def.group, def.action, '--json-input', JSON.stringify(example)]);
+      expect(viaCli.status === 0).toBe(viaMcp.isError !== true);
+      expect(normalize(viaCli.status === 0 ? viaCli.stdout : viaCli.stderr)).toBe(normalize(resultText(viaMcp)));
     },
     30_000,
   );
 
-  it('[WL-35] keeps standard output free of anything but MCP frames', () => {
+  it('[WL-18] records command activity in the isolated store only', () => {
+    const { iso: env } = setup();
+    expect(filesUnder(join(env.store)).some((f) => f.includes('activity'))).toBe(true);
+    expect(filesUnder(env.cwd)).toEqual([]);
+  });
+
+  it('[WL-35] keeps standard output free of anything but MCP frames', async () => {
+    const { mcp } = setup();
+    await mcp.client.listTools();
     expect(mcp.errors).toEqual([]);
   });
 });

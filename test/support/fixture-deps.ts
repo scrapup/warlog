@@ -1,17 +1,14 @@
 /**
  * Test helper: the shared call path (registry, mediator, presenter) over the fixture operations.
  */
-import { ActivityBehavior } from '../../src/core/mediator/behaviors/activity.behavior.ts';
-import { ContextBehavior } from '../../src/core/mediator/behaviors/context.behavior.ts';
-import { ErrorMappingBehavior } from '../../src/core/mediator/behaviors/error-mapping.behavior.ts';
-import { SecretGuardBehavior } from '../../src/core/mediator/behaviors/secret-guard.behavior.ts';
-import { ValidationBehavior } from '../../src/core/mediator/behaviors/validation.behavior.ts';
+import type { ExecuteDeps } from '../../src/adapters/shared/execute-operation.ts';
+import type { Redaction } from '../../src/core/errors/path-redactor.ts';
 import { Mediator } from '../../src/core/mediator/mediator.ts';
 import type { OperationDefinition } from '../../src/core/mediator/operation-definition.ts';
 import { OperationRegistry } from '../../src/core/mediator/operation-registry.ts';
+import { buildPipeline } from '../../src/core/mediator/pipeline-factory.ts';
 import { Presenter } from '../../src/core/presenter/presenter.ts';
 import { SecretGuard } from '../../src/core/security/secret-guard.ts';
-import type { ExecuteDeps } from '../../src/adapters/shared/execute-operation.ts';
 import { FixtureContextFactory } from './fixture-context.ts';
 import { FIXTURE_OPERATIONS } from './fixture-operations.ts';
 import { memoryStore } from './store-fixture.ts';
@@ -34,12 +31,8 @@ export function fixtureDeps(operations: readonly OperationDefinition[] = FIXTURE
   const store = memoryStore();
   const contexts = new FixtureContextFactory();
   const registry = new OperationRegistry(operations);
-  const behaviors = [
-    new ErrorMappingBehavior(store.logger, [['/home/alice', '~']]),
-    new ContextBehavior(contexts),
-    new ValidationBehavior(),
-    new SecretGuardBehavior(new SecretGuard()),
-    new ActivityBehavior(store.activity),
-  ];
-  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), contexts, store };
+  const logger = store.logger;
+  const redactions: Redaction[] = [['/home/alice', '~']];
+  const behaviors = buildPipeline({ logger, redactions, contexts, secretGuard: new SecretGuard(), activity: store.activity });
+  return { registry, mediator: new Mediator(registry, behaviors), presenter: new Presenter(), logger, redactions, contexts, store };
 }

@@ -1,17 +1,17 @@
 import { describe, expect, it } from '@jest/globals';
 import { z } from 'zod';
-import { ActivityBehavior } from '../../../../src/core/mediator/behaviors/activity.behavior.ts';
-import { ContextBehavior } from '../../../../src/core/mediator/behaviors/context.behavior.ts';
-import { ErrorMappingBehavior } from '../../../../src/core/mediator/behaviors/error-mapping.behavior.ts';
-import { SecretGuardBehavior } from '../../../../src/core/mediator/behaviors/secret-guard.behavior.ts';
 import { ValidationBehavior } from '../../../../src/core/mediator/behaviors/validation.behavior.ts';
 import { Mediator } from '../../../../src/core/mediator/mediator.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
-import { OperationRegistry } from '../../../../src/core/mediator/operation-registry.ts';
+import { OUTPUT_OPTION_KEYS } from '../../../../src/adapters/shared/output-options.ts';
+import { OperationRegistry, RESERVED_INPUT_KEYS } from '../../../../src/core/mediator/operation-registry.ts';
+import { rootRedactions } from '../../../../src/core/mediator/behaviors/error-mapping.behavior.ts';
+import { buildPipeline } from '../../../../src/core/mediator/pipeline-factory.ts';
 import { SecretGuard } from '../../../../src/core/security/secret-guard.ts';
 import { FixtureContextFactory } from '../../../support/fixture-context.ts';
+import { fixtureDeps } from '../../../support/fixture-deps.ts';
+import { GLOBAL_ROOT, memoryStore } from '../../../support/store-fixture.ts';
 import { FIXTURE_OPERATIONS } from '../../../support/fixture-operations.ts';
-import { memoryStore } from '../../../support/store-fixture.ts';
 
 const TOKEN = ['gh', 'p_'].join('') + 'a1B2'.repeat(9);
 
@@ -20,16 +20,8 @@ const TOKEN = ['gh', 'p_'].join('') + 'a1B2'.repeat(9);
  * @returns Mediator, context factory and store.
  */
 function setup() {
-  const store = memoryStore();
-  const contexts = new FixtureContextFactory();
-  const behaviors = [
-    new ErrorMappingBehavior(store.logger, [['/home/alice', '~']]),
-    new ContextBehavior(contexts),
-    new ValidationBehavior(),
-    new SecretGuardBehavior(new SecretGuard()),
-    new ActivityBehavior(store.activity),
-  ];
-  return { mediator: new Mediator(new OperationRegistry(FIXTURE_OPERATIONS), behaviors), contexts, store };
+  const deps = fixtureDeps();
+  return { mediator: deps.mediator, contexts: deps.contexts, store: deps.store };
 }
 
 describe('Mediator pipeline', () => {
@@ -89,6 +81,33 @@ describe('Mediator pipeline', () => {
     ]);
   });
 
+  it('[WL-40] redacts the store roots of the call', async () => {
+    const error = await setup().mediator.send('fixture_fail', { code: 'NOT_FOUND' }).catch((e: unknown) => e);
+    expect(rootRedactions(undefined)).toEqual([]);
+    expect(rootRedactions({ global: '/g', warnings: [] })).toEqual([['/g', '<store>']]);
+    expect(JSON.stringify(error)).not.toContain(GLOBAL_ROOT);
+  });
+
+  it('[WL-09] logs a rejected secret as a warning with codes only', async () => {
+    const { mediator, store } = setup();
+    await mediator.send('fixture_note_create', { title: TOKEN }).catch(() => undefined);
+    expect(store.logger.events).toEqual([
+      { level: 'warn', event: 'op.failed', fields: { op: 'fixture_note_create', error_code: 'SECRET_REJECTED', error_name: 'WarlogError' } },
+    ]);
+  });
+
+  it('builds the behaviors in the order of plan §2.2', () => {
+    const store = memoryStore();
+    const behaviors = buildPipeline({ logger: store.logger, redactions: [], contexts: new FixtureContextFactory(), secretGuard: new SecretGuard(), activity: store.activity });
+    expect(behaviors.map((b) => b.constructor.name)).toEqual([
+      'ErrorMappingBehavior',
+      'ContextBehavior',
+      'ValidationBehavior',
+      'SecretGuardBehavior',
+      'ActivityBehavior',
+    ]);
+  });
+
   it('fails clearly when the pipeline lacks the context behavior', async () => {
     const mediator = new Mediator(new OperationRegistry(FIXTURE_OPERATIONS), [new ValidationBehavior()]);
     await expect(mediator.send('fixture_echo', { text: 'x' })).rejects.toMatchObject({ code: 'INTERNAL' });
@@ -120,6 +139,20 @@ describe('OperationRegistry', () => {
   it('[WL-35] rejects duplicate names and CLI paths', () => {
     expect(() => new OperationRegistry([base, { ...base, name: 'other' }])).toThrow(expect.objectContaining({ code: 'INTERNAL' }));
     expect(() => new OperationRegistry([base, { ...base, action: 'other' }])).toThrow(expect.objectContaining({ code: 'INTERNAL' }));
+  });
+
+  it.each([['format'], ['fields'], ['file'], ['json_input'], ['validate'], ['help'], ['no_verify']])(
+    '[WL-35] rejects a field named %s that clashes with an interface option',
+    (key) => {
+      const input = z.object({ [key]: z.string().optional() });
+      expect(() => new OperationRegistry([{ ...base, input, examples: [{}] }])).toThrow(
+        expect.objectContaining({ code: 'INTERNAL', message: expect.stringContaining(`fields reuse reserved names: ${key}`) }),
+      );
+    },
+  );
+
+  it('[WL-35] reserves every output option key', () => {
+    expect(OUTPUT_OPTION_KEYS.every((k) => RESERVED_INPUT_KEYS.includes(k))).toBe(true);
   });
 
   it('accepts a schema made strict by the registry check', () => {

@@ -1,7 +1,7 @@
 /**
  * Test helper: in-memory streams and files for the command line.
  */
-import type { CliIo } from '../../src/adapters/cli/cli-builder.ts';
+import type { CliIo } from '../../../src/adapters/cli/cli-builder.ts';
 
 /** Captured streams over an in-memory file map. */
 export class MemoryCliIo implements CliIo {

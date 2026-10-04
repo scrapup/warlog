@@ -3,6 +3,8 @@
  * Validation issues on fields that came from the file are located as `file:line:col field: message`.
  */
 import { WarlogError } from '../../core/errors/warlog-error.ts';
+import type { ValidationIssue } from '../../core/mediator/behaviors/validation.behavior.ts';
+import { isPlainRecord } from '../../core/security/plain-record.ts';
 import { convertFlagValue } from './flag-mapper.ts';
 import type { FieldSpec } from './flag-mapper.ts';
 import { parseFileInput } from './file-input-loader.ts';
@@ -41,13 +43,8 @@ export interface CollectedInput {
   readonly overridden: ReadonlySet<string>;
 }
 
-/** A validation issue as reported by the Validation behavior. */
-interface Issue {
-  /** Dotted field path. */
-  readonly path: string;
-  /** Problem. */
-  readonly message: string;
-}
+/** Fields that receive the body of a Markdown input file, by preference (WL-36). */
+const MARKDOWN_BODY_KEYS = ['content', 'description'] as const;
 
 /**
  * Reads and parses `--file`.
@@ -80,10 +77,10 @@ function parseJsonInput(text: string): Record<string, unknown> {
   } catch {
     throw new WarlogError('VALIDATION', '--json-input is not valid JSON', { issues: [{ path: '', message: 'invalid JSON' }] });
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainRecord(value)) {
     throw new WarlogError('VALIDATION', '--json-input must be a JSON object', { issues: [{ path: '', message: 'expected an object' }] });
   }
-  return value as Record<string, unknown>;
+  return value;
 }
 
 /**
@@ -111,6 +108,16 @@ function outputValues(opts: Readonly<Record<string, unknown>>): Record<string, u
 }
 
 /**
+ * Chooses the field receiving a Markdown body: `content` when the operation has it, else
+ * `description` (an operation with neither rejects the body as an unknown field).
+ * @param bindings - Field flags of the operation.
+ * @returns The field name.
+ */
+function markdownBodyKey(bindings: readonly FlagBinding[]): string {
+  return MARKDOWN_BODY_KEYS.find((key) => bindings.some((b) => b.spec.key === key)) ?? 'description';
+}
+
+/**
  * Assembles the input of one call.
  * @param bindings - Field flags of the operation.
  * @param opts - Parsed options.
@@ -119,7 +126,7 @@ function outputValues(opts: Readonly<Record<string, unknown>>): Record<string, u
  * @throws {WarlogError} `INVALID_FILE` or `VALIDATION` on bad file or JSON input.
  */
 export async function collectInput(bindings: readonly FlagBinding[], opts: Readonly<Record<string, unknown>>, reader: InputReader): Promise<CollectedInput> {
-  const bodyKey = bindings.some((b) => b.spec.key === 'content') ? 'content' : 'description';
+  const bodyKey = markdownBodyKey(bindings);
   const fileOpt = opts['file'];
   const file = typeof fileOpt === 'string' ? await loadFile(fileOpt, bodyKey, reader) : undefined;
   const jsonOpt = opts['jsonInput'];
@@ -134,8 +141,8 @@ export async function collectInput(bindings: readonly FlagBinding[], opts: Reado
  * @param value - Error detail.
  * @returns `true` for an array of `{ path, message }`.
  */
-function isIssueList(value: unknown): value is Issue[] {
-  return Array.isArray(value) && value.every((i: unknown) => typeof (i as Partial<Issue>)?.path === 'string');
+function isIssueList(value: unknown): value is ValidationIssue[] {
+  return Array.isArray(value) && value.every((i: unknown) => isPlainRecord(i) && typeof i['path'] === 'string' && typeof i['message'] === 'string');
 }
 
 /**

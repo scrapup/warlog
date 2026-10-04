@@ -5,10 +5,29 @@
 import { errorFields } from '../../errors/error-fields.ts';
 import type { Redaction } from '../../errors/path-redactor.ts';
 import { redactError } from '../../errors/path-redactor.ts';
-import { WarlogError } from '../../errors/warlog-error.ts';
-import type { Logger } from '../../ports/logger.port.ts';
+import { toWarlogError } from '../../errors/warlog-error.ts';
+import type { WarlogError, WarlogErrorCode } from '../../errors/warlog-error.ts';
+import type { LogLevel, Logger } from '../../ports/logger.port.ts';
+import type { StoreRoots } from '../../storage/store-roots.ts';
 import type { OperationResult } from '../operation-result.ts';
 import type { Behavior, Next, PipelineRequest } from '../pipeline.ts';
+
+/** Log level of a failure: unexpected errors and rejected secrets are visible by default. */
+const LEVELS: Partial<Record<WarlogErrorCode, LogLevel>> = { INTERNAL: 'error', SECRET_REJECTED: 'warn' };
+
+/**
+ * Redactions for the store roots of a call (repository paths before the global root).
+ * @param roots - Roots of the call, when resolved.
+ * @returns Prefixes and placeholders.
+ */
+export function rootRedactions(roots: StoreRoots | undefined): Redaction[] {
+  if (roots === undefined) {
+    return [];
+  }
+  const repo = roots.repository;
+  const repoRedactions: Redaction[] = repo === undefined ? [] : [[repo.root, '<repo-store>'], [repo.mainWorktree, '<repo>']];
+  return [...repoRedactions, [roots.global, '<store>']];
+}
 
 /** Maps errors to the stable categories. */
 export class ErrorMappingBehavior implements Behavior {
@@ -22,7 +41,7 @@ export class ErrorMappingBehavior implements Behavior {
   /**
    * Creates the behavior.
    * @param logger - Logger (codes only).
-   * @param redactions - Local path prefixes to hide (home, store roots).
+   * @param redactions - Static local path prefixes to hide (home); the call's store roots are added.
    */
   constructor(logger: Logger, redactions: readonly Redaction[]) {
     this.logger = logger;
@@ -40,9 +59,9 @@ export class ErrorMappingBehavior implements Behavior {
     try {
       return await next();
     } catch (error: unknown) {
-      const mapped = error instanceof WarlogError ? error : new WarlogError('INTERNAL', 'internal error', undefined, { cause: error });
-      this.logger.log(mapped.code === 'INTERNAL' ? 'error' : 'debug', 'op.failed', { op: request.definition.name, ...errorFields(error) });
-      throw redactError(mapped, this.redactions);
+      const mapped: WarlogError = toWarlogError(error);
+      this.logger.log(LEVELS[mapped.code] ?? 'debug', 'op.failed', { op: request.definition.name, ...errorFields(error) });
+      throw redactError(mapped, [...rootRedactions(request.context?.roots), ...this.redactions]);
     }
   }
 }

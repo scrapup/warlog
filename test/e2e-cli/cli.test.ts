@@ -46,8 +46,13 @@ describe('warlog command line from the packed tarball', () => {
     expect(result.stdout).toContain('Start the MCP server');
   }, 30_000);
 
-  it('[WL-39] exits 3 on an unknown command or flag', () => {
-    expect(runNode([bin(), 'nope'], { timeoutMs: 25_000 }).status).toBe(3);
-    expect(runNode([bin(), '--bogus'], { timeoutMs: 25_000 }).status).toBe(3);
-  }, 60_000);
+  it.each([
+    [['nope'], "unknown command 'nope'"],
+    [['--bogus'], "unknown option '--bogus'"],
+  ])('[WL-39] exits 3 on %j with a stable validation error', (args, message) => {
+    const result = runNode([bin(), ...args], { timeoutMs: 25_000 });
+    expect(result.status).toBe(3);
+    expect(result.stderr).toMatch(/^VALIDATION: /);
+    expect(result.stderr).toContain(message);
+  }, 30_000);
 });

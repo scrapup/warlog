@@ -13,6 +13,8 @@ const SCHEMA = z.object({
   nested: z.array(z.object({ x: z.number() })).optional(),
   urgent: z.boolean().nullable().optional(),
   meta: z.object({ k: z.string() }).optional(),
+  frozen: z.array(z.string()).readonly(),
+  either: z.union([z.string(), z.number()]).optional(),
 });
 
 /**
@@ -39,6 +41,8 @@ describe('flag mapper', () => {
     expect(spec('nested')).toMatchObject({ kind: 'complex', typeLabel: 'object[]' });
     expect(spec('urgent')).toMatchObject({ kind: 'boolean', required: false });
     expect(spec('meta')).toMatchObject({ kind: 'complex', typeLabel: 'object' });
+    expect(spec('frozen')).toMatchObject({ kind: 'string-array', required: true });
+    expect(spec('either')).toMatchObject({ kind: 'complex', typeLabel: 'union' });
   });
 
   it('[WL-36] converts flag text to the field type, leaving invalid text for validation', () => {

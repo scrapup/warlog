@@ -46,8 +46,10 @@ describe('warlog mcp from the packed tarball', () => {
     expect(JSON.stringify(result.content)).toContain('VALIDATION: unknown operation nope');
   }, 30_000);
 
-  it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', () => {
+  it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', async () => {
+    await mcp().client.callTool({ name: 'nope', arguments: {} });
+    await mcp().client.listTools();
     expect(mcp().errors).toEqual([]);
     expect(mcp().stderr()).toBe('');
-  });
+  }, 30_000);
 });

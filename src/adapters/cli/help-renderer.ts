@@ -4,18 +4,20 @@
  */
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import { stringifyYaml } from '../../core/storage/yaml-codec.ts';
+import { COMMON_OPTIONS, HELP_OPTION } from './common-options.ts';
 import { fieldSpecs } from './flag-mapper.ts';
 import type { FieldSpec } from './flag-mapper.ts';
 
-/** Options every operation accepts, shown after its parameters. */
-const COMMON_OPTIONS: readonly (readonly string[])[] = [
-  ['--file <path>', 'Read input from a YAML, JSON or Markdown file (`-` for standard input)'],
-  ['--json-input <json>', 'Read input from a JSON object'],
-  ['--validate', 'Validate the input only; nothing is written'],
-  ['--format <format>', 'Output format: table | yaml | json'],
-  ['--fields <list>', 'Comma-separated fields to keep in the output'],
-  ['-h, --help', 'Show this help'],
-];
+/**
+ * Pads every cell but the last to its column width.
+ * @param row - Cells.
+ * @param widths - Column widths.
+ * @returns Padded cells.
+ */
+function padRow(row: readonly string[], widths: readonly number[]): string[] {
+  const last = row.length - 1;
+  return row.map((cell, i) => (i === last ? cell : cell.padEnd(widths[i] ?? 0)));
+}
 
 /**
  * Formats rows as aligned columns.
@@ -24,7 +26,7 @@ const COMMON_OPTIONS: readonly (readonly string[])[] = [
  */
 function columns(rows: readonly (readonly string[])[]): string[] {
   const widths = rows.reduce<number[]>((w, row) => row.map((cell, i) => Math.max(w[i] ?? 0, cell.length)), []);
-  return rows.map((row) => `  ${row.map((cell, i) => (i === row.length - 1 ? cell : cell.padEnd(widths[i] ?? 0))).join('  ')}`.trimEnd());
+  return rows.map((row) => `  ${padRow(row, widths).join('  ')}`.trimEnd());
 }
 
 /**
@@ -66,7 +68,7 @@ export function renderOperationHelp(def: OperationDefinition): string {
     ...(params.length === 0 ? ['  (none)'] : columns([['FLAG', 'TYPE', 'REQUIRED', 'DEFAULT', 'DESCRIPTION'], ...params])),
     '',
     'Options:',
-    ...columns(COMMON_OPTIONS),
+    ...columns([...COMMON_OPTIONS, HELP_OPTION].map((o) => [o.flags, o.description])),
     '',
     `Example input file (warlog ${def.group} ${def.action} --file input.yaml):`,
     ...example.split('\n').map((line) => `  ${line}`),

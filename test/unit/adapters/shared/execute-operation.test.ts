@@ -18,12 +18,19 @@ class BrokenPresenter extends Presenter {
 
 describe('shared call path', () => {
   it('[WL-40] maps an unexpected rendering failure to INTERNAL', async () => {
-    const outcome = await executeOperation({ ...fixtureDeps(), presenter: new BrokenPresenter() }, 'fixture_echo', { text: 'x' });
+    const deps = fixtureDeps();
+    const outcome = await executeOperation({ ...deps, presenter: new BrokenPresenter() }, 'fixture_echo', { text: 'x' });
     expect(outcome).toMatchObject({ ok: false, error: { code: 'INTERNAL', message: 'internal error' } });
+    expect(deps.store.logger.events).toEqual([{ level: 'error', event: 'op.failed', fields: { op: 'fixture_echo', stage: 'adapter', error_code: 'UNEXPECTED', error_name: 'TypeError' } }]);
   });
 
   it('[WL-36] returns valid on a dry run and runs no handler', async () => {
     expect(await executeOperation(fixtureDeps(), 'fixture_echo', { text: 'x' }, { dryRun: true })).toEqual({ ok: true, text: 'valid', warnings: [] });
+  });
+
+  it('[WL-40] redacts local paths of errors raised outside the mediator', async () => {
+    const outcome = await executeOperation(fixtureDeps(), '/home/alice/op', {});
+    expect(outcome).toMatchObject({ ok: false, error: { code: 'VALIDATION', message: 'unknown operation ~/op' } });
   });
 
   it('formats errors with and without details', () => {

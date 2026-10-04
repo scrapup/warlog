@@ -49,6 +49,6 @@ describe('file input loader', () => {
 
   it('[WL-36] rejects alias bombs', () => {
     const bomb = ['a: &a [x, x]', ...Array.from({ length: 12 }, (_, i) => `l${i}: &l${i} [${i === 0 ? '*a' : `*l${i - 1}`}, ${i === 0 ? '*a' : `*l${i - 1}`}]`)].join('\n');
-    expect(() => parseFileInput(bomb, 'b.yaml', 'description')).toThrow();
+    expect(errorOf(() => parseFileInput(bomb, 'b.yaml', 'description'))).toMatchObject({ code: 'VALIDATION', details: { file: 'b.yaml', line: 1, col: 1 } });
   });
 });

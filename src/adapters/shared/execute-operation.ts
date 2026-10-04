@@ -3,10 +3,16 @@
  * options, run the mediator, render the result. Both interfaces therefore return the same text
  * and the same errors for the same input.
  */
-import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { errorFields } from '../../core/errors/error-fields.ts';
+import type { Redaction } from '../../core/errors/path-redactor.ts';
+import { redactError } from '../../core/errors/path-redactor.ts';
+import { WarlogError, isWarlogError, toWarlogError } from '../../core/errors/warlog-error.ts';
 import type { Mediator } from '../../core/mediator/mediator.ts';
+import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import type { OperationRegistry } from '../../core/mediator/operation-registry.ts';
-import type { Presenter } from '../../core/presenter/presenter.ts';
+import type { OperationResult } from '../../core/mediator/operation-result.ts';
+import type { Logger } from '../../core/ports/logger.port.ts';
+import type { PresentOptions, Presenter } from '../../core/presenter/presenter.ts';
 import { stringifyYaml } from '../../core/storage/yaml-codec.ts';
 import { splitOutputOptions } from './output-options.ts';
 
@@ -18,6 +24,10 @@ export interface ExecuteDeps {
   readonly mediator: Mediator;
   /** Presenter. */
   readonly presenter: Presenter;
+  /** Logger (codes only). */
+  readonly logger: Logger;
+  /** Local path prefixes hidden in errors raised outside the mediator (home directory). */
+  readonly redactions: readonly Redaction[];
 }
 
 /** Successful call. */
@@ -47,6 +57,9 @@ export interface ExecuteOptions {
   readonly dryRun?: boolean;
 }
 
+/** Warning returned when a command succeeded but its output options could not be applied. */
+export const OUTPUT_IGNORED = 'output.options_ignored';
+
 /**
  * Formats an error for a transport: `CODE: message` followed by YAML details.
  * @param error - Error.
@@ -55,6 +68,42 @@ export interface ExecuteOptions {
 export function formatError(error: WarlogError): string {
   const head = `${error.code}: ${error.message}`;
   return error.details === undefined ? head : `${head}\n${stringifyYaml(error.details).trimEnd()}`;
+}
+
+/**
+ * Turns any failure of a call into a logged, redacted, stable error.
+ * @param deps - Collaborators.
+ * @param name - Operation name.
+ * @param error - Thrown value.
+ * @returns The failure.
+ */
+export function failure(deps: Pick<ExecuteDeps, 'logger' | 'redactions'>, name: string, error: unknown): ExecuteFailure {
+  if (!(error instanceof WarlogError)) {
+    deps.logger.log('error', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error) });
+  }
+  return { ok: false, error: redactError(toWarlogError(error), deps.redactions) };
+}
+
+/**
+ * Renders a result. A command has already written: when its output options cannot be applied
+ * (unknown field, table for a non-list), the default rendering is returned with a warning
+ * instead of an error, so the caller does not retry a write that succeeded.
+ * @param deps - Collaborators.
+ * @param definition - Operation.
+ * @param result - Result.
+ * @param output - Output options.
+ * @returns Text and extra warnings.
+ * @throws {WarlogError} `VALIDATION` for a query with invalid output options.
+ */
+function render(deps: ExecuteDeps, definition: OperationDefinition, result: OperationResult, output: PresentOptions): ExecuteSuccess {
+  try {
+    return { ok: true, text: deps.presenter.present(result, definition.defaultFormat, output), warnings: [] };
+  } catch (error: unknown) {
+    if (definition.kind !== 'command' || !isWarlogError(error, 'VALIDATION')) {
+      throw error;
+    }
+    return { ok: true, text: deps.presenter.present(result, definition.defaultFormat), warnings: [OUTPUT_IGNORED] };
+  }
 }
 
 /**
@@ -70,10 +119,12 @@ export async function executeOperation(deps: ExecuteDeps, name: string, args: un
     const { input, output } = splitOutputOptions(args);
     const definition = deps.registry.get(name);
     const response = await deps.mediator.send(name, input, { dryRun: options.dryRun === true });
-    const text = response.result === undefined ? 'valid' : deps.presenter.present(response.result, definition.defaultFormat, output);
-    return { ok: true, text, warnings: response.warnings };
+    if (response.result === undefined) {
+      return { ok: true, text: 'valid', warnings: response.warnings };
+    }
+    const rendered = render(deps, definition, response.result, output);
+    return { ...rendered, warnings: [...response.warnings, ...rendered.warnings] };
   } catch (error: unknown) {
-    const mapped = error instanceof WarlogError ? error : new WarlogError('INTERNAL', 'internal error', undefined, { cause: error });
-    return { ok: false, error: mapped };
+    return failure(deps, name, error);
   }
 }

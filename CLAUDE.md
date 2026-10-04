@@ -26,14 +26,14 @@ Package scaffold and quality gates (US-93): `src/bin/warlog.ts` (entry point),
 interfaces), `src/core/adapters` (Node implementations), `src/core/security` (linear matchers,
 identifier validation, `PathGuard`), `src/core/git` (read-only `GitCliClient`, repository locator),
 `src/core/storage` (YAML/front-matter codecs, store roots, entity paths, `EntityFileRepository`,
-`ActivityLog`). Mediator and interfaces (US-95): `src/core/mediator` (registry, pipeline,
+`ActivityLog`). Mediator and interfaces (US-95): `src/core/mediator` (registry, `buildPipeline` (the single ordered pipeline),
 behaviors ErrorMapping → Context → Validation → SecretGuard → Activity, `StoreContextFactory`),
 `src/core/presenter` (table/YAML/JSON rendering, field projection, cursors),
 `src/adapters/shared/execute-operation.ts` (the single call path of both interfaces),
 `src/adapters/mcp` (low-level SDK `Server`, one tool per registry entry), `src/adapters/cli`
 (commander program generated from the registry: flags, `--file`, `--json-input`, `--validate`,
 help, exit codes), `src/compose/**` (composition roots) and `src/domain/operations.ts` (product
-registry content, empty until US-97). Test doubles live in `test/support/fakes`; fixture
+registry content, empty until US-97; field names reserved by the interfaces are rejected by the registry). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

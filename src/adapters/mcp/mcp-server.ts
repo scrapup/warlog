@@ -7,6 +7,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { errorFields } from '../../core/errors/error-fields.ts';
 import type { ExecuteDeps } from '../shared/execute-operation.ts';
 import { executeOperation, formatError } from '../shared/execute-operation.ts';
 import { toToolDescriptor } from './tool-mapper.ts';
@@ -52,6 +53,8 @@ export class McpServerAdapter {
    */
   createServer(): Server {
     const server = new Server({ name: 'warlog', version: this.deps.version }, { capabilities: { tools: {} } });
+    server.onerror = (error) => this.deps.logger.log('error', 'mcp.transport_error', { ...errorFields(error) });
+    server.onclose = () => this.deps.logger.log('debug', 'mcp.closed');
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: this.deps.registry.list().map(toToolDescriptor) }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => callTool(this.deps, request.params.name, request.params.arguments ?? {}));
     return server;
@@ -65,6 +68,7 @@ export class McpServerAdapter {
   async connect(transport: Transport): Promise<Server> {
     const server = this.createServer();
     await server.connect(transport);
+    this.deps.logger.log('debug', 'mcp.started', { version: this.deps.version });
     return server;
   }
 }

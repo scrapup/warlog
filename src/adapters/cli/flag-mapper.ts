@@ -78,8 +78,26 @@ const ARRAY_KINDS: Readonly<Record<string, KindLabel>> = {
   number: { kind: 'number-array', typeLabel: 'number[]' },
 };
 
+/** Help labels of structured types accepted only through `--file` / `--json-input`. */
+const COMPLEX_LABELS: Readonly<Record<string, string>> = { array: 'object[]', object: 'object', record: 'object' };
+
 /** Wrappers that do not change the value kind. */
 const WRAPPERS = new Set(['optional', 'default', 'nullable', 'prefault', 'readonly']);
+
+/** Wrappers that make a field optional (`nullable` and `readonly` do not). */
+const OPTIONAL_WRAPPERS = new Set(['optional', 'default', 'prefault']);
+
+/**
+ * Views a zod schema through the fields this module reads. zod v4 exposes `def` (`type`,
+ * `innerType`, `element`, `entries`, `defaultValue`) and `description` as its introspection API,
+ * but object shapes are typed with the core `$ZodType`, hence this single cast; the fields read
+ * are pinned for the installed zod version by `flag-mapper.test.ts`.
+ * @param schema - A zod schema.
+ * @returns Its introspection view.
+ */
+function asSchemaNode(schema: unknown): SchemaNode {
+  return schema as SchemaNode;
+}
 
 /**
  * Removes optional/default/nullable wrappers.
@@ -91,7 +109,7 @@ function unwrap(node: SchemaNode): Unwrapped {
   let optional = false;
   let defaultValue: unknown;
   while (WRAPPERS.has(current.def.type) && current.def.innerType !== undefined) {
-    optional = optional || current.def.type !== 'nullable';
+    optional = optional || OPTIONAL_WRAPPERS.has(current.def.type);
     if (current.def.type === 'default') {
       defaultValue = current.def.defaultValue;
     }
@@ -120,7 +138,7 @@ function kindOf(node: SchemaNode): KindLabel {
       return array;
     }
   }
-  return { kind: 'complex', typeLabel: type === 'array' ? 'object[]' : 'object' };
+  return { kind: 'complex', typeLabel: COMPLEX_LABELS[type] ?? type };
 }
 
 /**
@@ -139,10 +157,11 @@ export function toFlagName(key: string): string {
  */
 export function fieldSpecs(schema: z.ZodObject): FieldSpec[] {
   return Object.entries(schema.shape).map(([key, value]) => {
-    const { node, optional, defaultValue } = unwrap(value as unknown as SchemaNode);
+    const field = asSchemaNode(value);
+    const { node, optional, defaultValue } = unwrap(field);
     const { kind, typeLabel } = kindOf(node);
     const choices = node.def.type === 'enum' ? Object.values(node.def.entries ?? {}) : undefined;
-    const description = (value as unknown as SchemaNode).description ?? node.description ?? '';
+    const description = field.description ?? node.description ?? '';
     return {
       key,
       flag: toFlagName(key),
@@ -167,6 +186,18 @@ function toNumber(value: string): number | string {
 }
 
 /**
+ * Converts a boolean flag value (`--x`, `--x true`, `--x false`; other text is kept for validation).
+ * @param raw - Parsed value.
+ * @returns A boolean, or the raw value.
+ */
+function toBoolean(raw: unknown): unknown {
+  if (raw === true || raw === 'true') {
+    return true;
+  }
+  return raw === 'false' ? false : raw;
+}
+
+/**
  * Converts a raw flag value to the field's type.
  * @param spec - Field spec.
  * @param raw - Value(s) collected by the parser.
@@ -178,7 +209,7 @@ export function convertFlagValue(spec: FieldSpec, raw: unknown): unknown {
     case 'number':
       return typeof raw === 'string' ? toNumber(raw) : raw;
     case 'boolean':
-      return raw === true || raw === 'true' ? true : raw === 'false' ? false : raw;
+      return toBoolean(raw);
     case 'string-array':
       return values;
     case 'number-array':

@@ -14,7 +14,7 @@ Parameters:
 
 Options:
   --file <path>        Read input from a YAML, JSON or Markdown file (\`-\` for standard input)
-  --json-input <json>  Read input from a JSON object
+  --json-input <json>  Read input from a JSON object (prefer --file - for sensitive values)
   --validate           Validate the input only; nothing is written
   --format <format>    Output format: table | yaml | json
   --fields <list>      Comma-separated fields to keep in the output

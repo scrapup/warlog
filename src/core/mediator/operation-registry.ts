@@ -16,6 +16,22 @@ function isSnakeCase(name: string): boolean {
 }
 
 /**
+ * Input keys owned by the interfaces: output options (`format`, `fields`) and command-line
+ * options (`--file`, `--json-input`, `--validate`, `--help`). A field may not reuse them, nor
+ * start with `no_` (the command line reads `--no-x` as the negation of `--x`).
+ */
+export const RESERVED_INPUT_KEYS: readonly string[] = ['format', 'fields', 'file', 'json_input', 'validate', 'help'];
+
+/**
+ * Lists input keys that clash with the interfaces.
+ * @param def - Definition.
+ * @returns Offending keys.
+ */
+function reservedKeys(def: OperationDefinition): string[] {
+  return Object.keys(def.input.shape).filter((k) => RESERVED_INPUT_KEYS.includes(k) || k.startsWith('no_'));
+}
+
+/**
  * Checks one definition.
  * @param def - Definition.
  * @returns Nothing.
@@ -26,6 +42,8 @@ function checkDefinition(def: OperationDefinition): void {
   if (!isSnakeCase(def.name)) problems.push('name must be snake_case');
   if (def.description.trim() === '') problems.push('description is empty');
   if (def.examples.length === 0) problems.push('at least one example is required');
+  const reserved = reservedKeys(def);
+  if (reserved.length > 0) problems.push(`fields reuse reserved names: ${reserved.join(', ')}`);
   def.examples.forEach((example, i) => {
     if (!def.input.strict().safeParse(example).success) problems.push(`example ${i} does not match the input schema`);
   });

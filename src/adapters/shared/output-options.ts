@@ -4,18 +4,22 @@
  */
 import { z } from 'zod';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { toIssues } from '../../core/mediator/behaviors/validation.behavior.ts';
 import type { PresentOptions } from '../../core/presenter/presenter.ts';
+
+/** Output formats. */
+export const OUTPUT_FORMATS = ['table', 'yaml', 'json'] as const;
 
 /** Schema of the output options. */
 export const OUTPUT_OPTIONS = z
   .object({
-    format: z.enum(['table', 'yaml', 'json']).optional().describe('Output format (default: the operation default)'),
+    format: z.enum(OUTPUT_FORMATS).optional().describe('Output format (default: the operation default)'),
     fields: z.array(z.string().min(1)).optional().describe('Fields to keep in the output'),
   })
   .strict();
 
 /** Names of the output options. */
-export const OUTPUT_OPTION_KEYS: readonly string[] = ['format', 'fields'];
+export const OUTPUT_OPTION_KEYS: readonly string[] = Object.keys(OUTPUT_OPTIONS.shape);
 
 /** Raw input split into operation input and output options. */
 export interface SplitInput {
@@ -39,8 +43,7 @@ export function splitOutputOptions(args: unknown): SplitInput {
   const input = Object.fromEntries(entries.filter(([k]) => !OUTPUT_OPTION_KEYS.includes(k)));
   const parsed = OUTPUT_OPTIONS.safeParse(Object.fromEntries(entries.filter(([k]) => OUTPUT_OPTION_KEYS.includes(k))));
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
-    throw new WarlogError('VALIDATION', 'invalid output options', { issues });
+    throw new WarlogError('VALIDATION', 'invalid output options', { issues: toIssues(parsed.error) });
   }
   const output: PresentOptions = {
     ...(parsed.data.format === undefined ? {} : { format: parsed.data.format }),

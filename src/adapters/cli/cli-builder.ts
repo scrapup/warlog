@@ -5,10 +5,11 @@
 import { Command, CommanderError, Option } from 'commander';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
-import { executeOperation, formatError } from '../shared/execute-operation.ts';
-import type { ExecuteDeps } from '../shared/execute-operation.ts';
+import { executeOperation, failure, formatError } from '../shared/execute-operation.ts';
+import type { ExecuteDeps, ExecuteOutcome } from '../shared/execute-operation.ts';
 import { collectInput, locateIssues } from './cli-input.ts';
 import type { CollectedInput, FlagBinding, InputReader } from './cli-input.ts';
+import { COMMON_OPTIONS } from './common-options.ts';
 import { EXIT_OK, EXIT_VALIDATION, exitCodeFor } from './exit-codes.ts';
 import { fieldSpecs } from './flag-mapper.ts';
 import type { FieldSpec } from './flag-mapper.ts';
@@ -47,8 +48,15 @@ interface RunState {
   exitCode: number;
 }
 
-/** Flags every operation owns; a field may not reuse them. */
-const RESERVED_FLAGS = new Set(['file', 'json-input', 'validate', 'format', 'fields', 'help']);
+/** One operation command being wired. */
+interface OperationCommand {
+  /** Collaborators. */
+  readonly deps: CliDeps;
+  /** Operation. */
+  readonly def: OperationDefinition;
+  /** Exit code holder. */
+  readonly state: RunState;
+}
 
 /** Commander outcomes that are not usage errors. */
 const CLEAN_EXITS = new Set(['commander.helpDisplayed', 'commander.version']);
@@ -64,15 +72,11 @@ function collect(value: string, previous: unknown): string[] {
 }
 
 /**
- * Builds the parser option of one field.
+ * Builds the parser option of one field (reserved names are rejected by the registry).
  * @param spec - Field spec.
  * @returns The option.
- * @throws {WarlogError} `INTERNAL` when the field reuses a reserved flag.
  */
 function fieldOption(spec: FieldSpec): Option {
-  if (RESERVED_FLAGS.has(spec.flag)) {
-    throw new WarlogError('INTERNAL', `field ${spec.key} reuses the reserved flag --${spec.flag}`);
-  }
   if (spec.kind === 'boolean') {
     return new Option(`--${spec.flag} [value]`, spec.description);
   }
@@ -91,61 +95,64 @@ function writeLine(io: CliIo, stream: 'stdout' | 'stderr', text: string): void {
 }
 
 /**
- * Runs one operation from parsed options.
- * @param deps - Collaborators.
- * @param def - Operation.
- * @param bindings - Field flags.
- * @param opts - Parsed options.
+ * Prints an outcome and returns its exit code.
+ * @param io - Streams.
+ * @param outcome - Outcome.
  * @returns The exit code.
  */
-async function runOperation(deps: CliDeps, def: OperationDefinition, bindings: readonly FlagBinding[], opts: Record<string, unknown>): Promise<number> {
-  let input: CollectedInput;
-  try {
-    input = await collectInput(bindings, opts, deps.io);
-  } catch (error: unknown) {
-    const mapped = error instanceof WarlogError ? error : new WarlogError('INTERNAL', 'internal error', undefined, { cause: error });
-    writeLine(deps.io, 'stderr', formatError(mapped));
-    return exitCodeFor(mapped.code);
-  }
-  const outcome = await executeOperation(deps, def.name, input.args, { dryRun: opts['validate'] === true });
+function report(io: CliIo, outcome: ExecuteOutcome): number {
   if (!outcome.ok) {
-    const error = locateIssues(outcome.error, input);
-    writeLine(deps.io, 'stderr', formatError(error));
-    return exitCodeFor(error.code);
+    writeLine(io, 'stderr', formatError(outcome.error));
+    return exitCodeFor(outcome.error.code);
   }
-  writeLine(deps.io, 'stdout', outcome.text);
+  writeLine(io, 'stdout', outcome.text);
   if (outcome.warnings.length > 0) {
-    writeLine(deps.io, 'stderr', `warnings: ${outcome.warnings.join(', ')}`);
+    writeLine(io, 'stderr', `warnings: ${outcome.warnings.join(', ')}`);
   }
   return EXIT_OK;
 }
 
 /**
+ * Runs one operation from parsed options.
+ * @param op - Operation command.
+ * @param bindings - Field flags.
+ * @param opts - Parsed options.
+ * @returns The exit code.
+ */
+async function runOperation(op: OperationCommand, bindings: readonly FlagBinding[], opts: Record<string, unknown>): Promise<number> {
+  const { deps, def } = op;
+  let input: CollectedInput;
+  try {
+    input = await collectInput(bindings, opts, deps.io);
+  } catch (error: unknown) {
+    return report(deps.io, failure(deps, def.name, error));
+  }
+  const outcome = await executeOperation(deps, def.name, input.args, { dryRun: opts['validate'] === true });
+  return report(deps.io, outcome.ok ? outcome : { ok: false, error: locateIssues(outcome.error, input) });
+}
+
+/**
  * Adds the command of one operation to its group.
  * @param group - Group command.
- * @param def - Operation.
- * @param deps - Collaborators.
- * @param state - Exit code holder.
+ * @param op - Operation command.
  */
-function addOperation(group: Command, def: OperationDefinition, deps: CliDeps, state: RunState): void {
-  const command = group.command(def.action).description(def.description).allowExcessArguments(false);
-  command.configureHelp({ formatHelp: () => renderOperationHelp(def) });
-  const bindings = fieldSpecs(def.input)
+function addOperation(group: Command, op: OperationCommand): void {
+  const command = group.command(op.def.action).description(op.def.description).allowExcessArguments(false);
+  command.configureHelp({ formatHelp: () => renderOperationHelp(op.def) });
+  const bindings = fieldSpecs(op.def.input)
     .filter((spec) => spec.kind !== 'complex')
     .map((spec) => {
       const option = fieldOption(spec);
       command.addOption(option);
       return { spec, attribute: option.attributeName() };
     });
-  command
-    .option('--file <path>', 'input file (YAML, JSON or Markdown; - for standard input)')
-    .option('--json-input <json>', 'input as a JSON object')
-    .option('--validate', 'validate only; nothing is written')
-    .addOption(new Option('--format <format>', 'output format').choices(['table', 'yaml', 'json']))
-    .option('--fields <list>', 'comma-separated output fields')
-    .action(async () => {
-      state.exitCode = await runOperation(deps, def, bindings, command.opts());
-    });
+  for (const common of COMMON_OPTIONS) {
+    const option = new Option(common.flags, common.description);
+    command.addOption(common.choices === undefined ? option : option.choices(common.choices));
+  }
+  command.action(async () => {
+    op.state.exitCode = await runOperation(op, bindings, command.opts());
+  });
 }
 
 /**
@@ -159,12 +166,12 @@ function buildProgram(deps: CliDeps, state: RunState): Command {
     .description('File-based memory and execution ledger for AI coding agents')
     .version(deps.version, '-V, --version')
     .exitOverride()
-    .configureOutput({ writeOut: (t) => deps.io.stdout(t), writeErr: (t) => deps.io.stderr(t) });
+    .configureOutput({ writeOut: (t) => deps.io.stdout(t), writeErr: (t) => deps.io.stderr(t), outputError: () => undefined });
   const groups = new Map<string, Command>();
   for (const def of deps.registry.list()) {
     const group = groups.get(def.group) ?? program.command(def.group).description(`${def.group} operations`);
     groups.set(def.group, group);
-    addOperation(group, def, deps, state);
+    addOperation(group, { deps, def, state });
   }
   program
     .command('mcp')
@@ -173,6 +180,24 @@ function buildProgram(deps: CliDeps, state: RunState): Command {
       await deps.startMcp();
     });
   return program;
+}
+
+/**
+ * Maps a parser outcome to an exit code; usage errors are printed as stable `VALIDATION` errors.
+ * @param io - Streams.
+ * @param error - Parser error.
+ * @returns The exit code.
+ */
+function parserExit(io: CliIo, error: CommanderError): number {
+  if (CLEAN_EXITS.has(error.code)) {
+    return EXIT_OK;
+  }
+  if (error.code === 'commander.help') {
+    return error.exitCode;
+  }
+  const message = error.message.replace(/^error: /, '');
+  writeLine(io, 'stderr', formatError(new WarlogError('VALIDATION', message, { reason: error.code.replace(/^commander\./, '') })));
+  return EXIT_VALIDATION;
 }
 
 /**
@@ -189,10 +214,7 @@ export async function runCli(argv: readonly string[], deps: CliDeps): Promise<nu
     if (!(error instanceof CommanderError)) {
       throw error;
     }
-    if (CLEAN_EXITS.has(error.code)) {
-      return EXIT_OK;
-    }
-    return error.code === 'commander.help' ? error.exitCode : EXIT_VALIDATION;
+    return parserExit(deps.io, error);
   }
   return state.exitCode;
 }

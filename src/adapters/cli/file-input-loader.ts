@@ -6,6 +6,7 @@
 import { LineCounter, parseDocument } from 'yaml';
 import type { Document } from 'yaml';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { isPlainRecord } from '../../core/security/plain-record.ts';
 import { MAX_ALIAS_COUNT } from '../../core/storage/yaml-codec.ts';
 
 /** A position in the input file (1-based). */
@@ -92,6 +93,21 @@ function splitMarkdown(text: string, source: string): MarkdownParts {
 }
 
 /**
+ * Converts a parsed document to plain values; an alias bomb is an input error, not a failure.
+ * @param parsed - Parsed YAML.
+ * @param source - File name.
+ * @returns The plain value (`{}` for an empty document).
+ * @throws {WarlogError} `VALIDATION` when the aliases expand beyond the limit.
+ */
+function toPlain(parsed: ParsedYaml, source: string): unknown {
+  try {
+    return parsed.doc.toJS({ maxAliasCount: MAX_ALIAS_COUNT }) ?? {};
+  } catch (error: unknown) {
+    throw new WarlogError('VALIDATION', `${source}:1:1 too many YAML aliases`, { file: source, line: 1, col: 1 }, { cause: error });
+  }
+}
+
+/**
  * Builds the file input from a parsed document.
  * @param parsed - Parsed YAML.
  * @param source - File name.
@@ -100,13 +116,13 @@ function splitMarkdown(text: string, source: string): MarkdownParts {
  * @throws {WarlogError} `VALIDATION` when the document is not a mapping.
  */
 function toFileInput(parsed: ParsedYaml, source: string, extra: Record<string, unknown>): FileInput {
-  const data: unknown = parsed.doc.toJS({ maxAliasCount: MAX_ALIAS_COUNT }) ?? {};
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+  const data = toPlain(parsed, source);
+  if (!isPlainRecord(data)) {
     throw new WarlogError('VALIDATION', `${source}:1:1 the file must contain a mapping of fields`, { file: source, line: 1, col: 1 });
   }
   return {
     source,
-    data: { ...(data as Record<string, unknown>), ...extra },
+    data: { ...data, ...extra },
     locate: (path) => {
       const node = parsed.doc.getIn(path, true) as RangedNode | undefined;
       const offset = node?.range?.[0];

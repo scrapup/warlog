@@ -1,11 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
-import { z } from 'zod';
 import { runCli } from '../../../../src/adapters/cli/cli-builder.ts';
-import { WarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
 import { fixtureDeps } from '../../../support/fixture-deps.ts';
 import { fixtureOperation } from '../../../support/fixture-operations.ts';
-import { MemoryCliIo } from '../../../support/memory-cli-io.ts';
+import { MemoryCliIo } from '../../../support/fakes/memory-cli-io.ts';
 
 /**
  * Runs the command line over the fixture registry.
@@ -13,10 +11,10 @@ import { MemoryCliIo } from '../../../support/memory-cli-io.ts';
  * @param prepare - Sets files or stdin before the run.
  * @returns Exit code, streams and fakes.
  */
-async function run(argv: string[], prepare: (io: MemoryCliIo) => void = () => undefined) {
+async function run(argv: string[], prepare: (io: MemoryCliIo) => void = () => undefined, operations?: readonly OperationDefinition[]) {
   const io = new MemoryCliIo();
   prepare(io);
-  const deps = fixtureDeps();
+  const deps = fixtureDeps(operations);
   let mcpStarted = false;
   const code = await runCli(argv, {
     ...deps,
@@ -43,10 +41,27 @@ describe('command line: flags and output', () => {
   });
 
   it('converts boolean flags with or without value and repeated or comma-separated arrays', async () => {
-    expect((await run(['fixture', 'list', '--done', '--format', 'json'])).out).not.toContain('"B"');
-    expect((await run(['fixture', 'list', '--done', 'false', '--format', 'json'])).out).toContain('"B"');
+    const done = await run(['fixture', 'list', '--done', '--format', 'json']);
+    expect(done.code).toBe(0);
+    expect(JSON.parse(done.out).rows.map((r: { id: string }) => r.id)).toEqual(['A', 'C']);
+    const open = await run(['fixture', 'list', '--done', 'false', '--format', 'json']);
+    expect(JSON.parse(open.out).rows.map((r: { id: string }) => r.id)).toEqual(['B']);
     const note = await run(['fixture', 'note-create', '--title', 'T', '--tags', 'a,b', '--tags', 'c', '--format', 'json']);
     expect(JSON.parse(note.out).tags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('[WL-38] keeps a successful command when its output options cannot be applied, with a warning', async () => {
+    const { code, out, err, deps } = await run(['fixture', 'note-create', '--title', 'T', '--fields', 'bogus']);
+    expect(code).toBe(0);
+    expect(out).toContain('title: T');
+    expect(err).toBe('warnings: output.options_ignored\n');
+    expect(deps.store.fs.files.size).toBeGreaterThan(0);
+  });
+
+  it('[WL-38] rejects invalid output options of a query with exit 3', async () => {
+    const { code, err } = await run(['fixture', 'echo', '--text', 'x', '--fields', 'bogus']);
+    expect(code).toBe(3);
+    expect(err).toMatch(/^VALIDATION: unknown field\(s\): bogus/);
   });
 
   it('[WL-39] prints scalar values raw', async () => {
@@ -65,10 +80,9 @@ describe('command line: flags and output', () => {
         },
       },
     };
-    const io = new MemoryCliIo();
-    const code = await runCli(['fixture', 'warn', '--text', 'x'], { ...fixtureDeps([warn]), io, version: '0', startMcp: async () => undefined });
+    const { code, err } = await run(['fixture', 'warn', '--text', 'x'], undefined, [warn]);
     expect(code).toBe(0);
-    expect(io.err).toBe('warnings: W1\n');
+    expect(err).toBe('warnings: W1\n');
   });
 });
 
@@ -100,7 +114,16 @@ describe('command line: file input', () => {
   it('[WL-36] does not locate fields that flags override', async () => {
     const { code, err } = await run(['fixture', 'echo', '--file', 'e.yaml', '--count', '-1'], (io) => io.files.set('e.yaml', 'text: a\ncount: 2\n'));
     expect(code).toBe(3);
+    expect(err).toMatch(/^VALIDATION: invalid input for fixture_echo/);
+    expect(err).toContain('path: count');
     expect(err).not.toContain('locations');
+  });
+
+  it('[WL-36] reports an alias bomb as a validation error of the file', async () => {
+    const bomb = ['a: &a [x, x]', ...Array.from({ length: 12 }, (_, i) => `l${i}: &l${i} [${i === 0 ? '*a' : `*l${i - 1}`}, ${i === 0 ? '*a' : `*l${i - 1}`}]`)].join('\n');
+    const { code, err } = await run(['fixture', 'echo', '--file', 'b.yaml'], (io) => io.files.set('b.yaml', bomb));
+    expect(code).toBe(3);
+    expect(err).toMatch(/^VALIDATION: b\.yaml:1:1 too many YAML aliases/);
   });
 
   it('[WL-36] reports malformed files with their position', async () => {
@@ -115,8 +138,18 @@ describe('command line: file input', () => {
     expect(err).toContain('INVALID_FILE: cannot read input file missing.yaml');
   });
 
-  it.each([['not json'], ['[1]']])('[WL-39] rejects --json-input %s with exit 3', async (json) => {
-    expect((await run(['fixture', 'echo', '--json-input', json])).code).toBe(3);
+  it.each([
+    ['not json', '--json-input is not valid JSON'],
+    ['[1]', '--json-input must be a JSON object'],
+  ])('[WL-39] rejects --json-input %s with exit 3', async (json, message) => {
+    const { code, err } = await run(['fixture', 'echo', '--json-input', json]);
+    expect(code).toBe(3);
+    expect(err).toMatch(new RegExp(`^VALIDATION: ${message}`));
+  });
+
+  it('[WL-38] trims comma-separated --fields', async () => {
+    const { out } = await run(['fixture', 'list', '--format', 'json', '--fields', ' id , title ']);
+    expect(Object.keys(JSON.parse(out).rows[0])).toEqual(['id', 'title']);
   });
 
   it('[WL-36] --validate checks the input and writes nothing', async () => {
@@ -142,16 +175,26 @@ describe('command line: exit codes and errors', () => {
     expect(err).toMatch(errorCode === 'UNEXPECTED' ? /^INTERNAL: / : new RegExp(`^${errorCode}: fixture ${errorCode}`));
   });
 
-  it('[WL-39] exits 3 on an unknown flag, an unknown command or an extra argument', async () => {
-    expect((await run(['fixture', 'echo', '--bogus'])).code).toBe(3);
-    expect((await run(['nope'])).code).toBe(3);
-    expect((await run(['fixture', 'echo', 'extra'])).code).toBe(3);
+  it.each([
+    ['an unknown flag', ['fixture', 'echo', '--bogus'], "unknown option '--bogus'"],
+    ['an unknown command', ['nope'], "unknown command 'nope'"],
+    ['an extra argument', ['fixture', 'echo', 'extra'], 'too many arguments'],
+    ['an invalid --format', ['fixture', 'echo', '--text', 'x', '--format', 'xml'], 'xml'],
+  ])('[WL-39] [WL-40] exits 3 on %s with a stable validation error', async (_label, argv, message) => {
+    const { code, err } = await run(argv);
+    expect(code).toBe(3);
+    expect(err).toMatch(/^VALIDATION: /);
+    expect(err).toContain(message);
   });
 
-  it('rejects a field that reuses a reserved flag', async () => {
-    const bad: OperationDefinition = { ...fixtureOperation('fixture_echo'), input: z.object({ format: z.string() }), examples: [{ format: 'x' }] };
-    const io = new MemoryCliIo();
-    await expect(runCli(['--help'], { ...fixtureDeps([bad]), io, version: '0', startMcp: async () => undefined })).rejects.toThrow(WarlogError);
+  it('[WL-40] reports unreadable standard input as INVALID_FILE with exit 1', async () => {
+    const { code, err } = await run(['fixture', 'echo', '--file', '-'], (io) => {
+      io.readStdin = async () => {
+        throw new TypeError('closed');
+      };
+    });
+    expect(code).toBe(1);
+    expect(err).toMatch(/^INVALID_FILE: cannot read input file -/);
   });
 });
 

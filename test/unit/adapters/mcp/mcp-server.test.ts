@@ -5,6 +5,7 @@ import { McpServerAdapter, callTool } from '../../../../src/adapters/mcp/mcp-ser
 import { toToolDescriptor } from '../../../../src/adapters/mcp/tool-mapper.ts';
 import type { OperationDefinition } from '../../../../src/core/mediator/operation-definition.ts';
 import { fixtureDeps } from '../../../support/fixture-deps.ts';
+import { resultText } from '../../../support/mcp-client.ts';
 import { FIXTURE_OPERATIONS, fixtureOperation } from '../../../support/fixture-operations.ts';
 
 /**
@@ -20,14 +21,6 @@ async function connect(operations: readonly OperationDefinition[] = FIXTURE_OPER
   return client;
 }
 
-/**
- * Text of the first content item.
- * @param result - Tool result.
- * @returns Its text.
- */
-function textOf(result: unknown): string {
-  return ((result as { content: { text: string }[] }).content[0] ?? { text: '' }).text;
-}
 
 describe('MCP adapter', () => {
   it('[WL-35] lists one tool per registry entry with strict input schemas and output options', async () => {
@@ -43,8 +36,8 @@ describe('MCP adapter', () => {
 
   it('[WL-35] calls tools through the mediator and renders like the command line', async () => {
     const client = await connect();
-    expect(textOf(await client.callTool({ name: 'fixture_echo', arguments: { text: 'hi', count: 2 } }))).toBe('text: hi\ncount: 2');
-    expect(textOf(await client.callTool({ name: 'fixture_value', arguments: { name: 'flag' } }))).toBe('false');
+    expect(resultText(await client.callTool({ name: 'fixture_echo', arguments: { text: 'hi', count: 2 } }))).toBe('text: hi\ncount: 2');
+    expect(resultText(await client.callTool({ name: 'fixture_value', arguments: { name: 'flag' } }))).toBe('false');
     await client.close();
   });
 
@@ -52,10 +45,10 @@ describe('MCP adapter', () => {
     const client = await connect();
     const result = await client.callTool({ name: 'fixture_fail', arguments: { code: 'CONFLICT' } });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/^CONFLICT: fixture CONFLICT\nreason: fixture/);
-    expect(textOf(await client.callTool({ name: 'fixture_echo' }))).toMatch(/^VALIDATION: invalid input/);
+    expect(resultText(result)).toMatch(/^CONFLICT: fixture CONFLICT\nreason: fixture/);
+    expect(resultText(await client.callTool({ name: 'fixture_echo' }))).toMatch(/^VALIDATION: invalid input/);
     const unknown = await client.callTool({ name: 'nope', arguments: {} });
-    expect(textOf(unknown)).toMatch(/^VALIDATION: unknown operation nope/);
+    expect(resultText(unknown)).toMatch(/^VALIDATION: unknown operation nope/);
     await client.close();
   });
 
@@ -63,8 +56,8 @@ describe('MCP adapter', () => {
     const deps = fixtureDeps();
     const result = await callTool(deps, 'fixture_echo', { text: 'x', format: 'xml' });
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toMatch(/^VALIDATION: invalid output options/);
-    expect(textOf(await callTool(deps, 'fixture_echo', 'not-an-object'))).toMatch(/^VALIDATION: arguments must be an object/);
+    expect(resultText(result)).toMatch(/^VALIDATION: invalid output options/);
+    expect(resultText(await callTool(deps, 'fixture_echo', 'not-an-object'))).toMatch(/^VALIDATION: arguments must be an object/);
   });
 
   it('appends warnings to the result text', async () => {
@@ -77,7 +70,20 @@ describe('MCP adapter', () => {
         },
       },
     };
-    expect(textOf(await callTool(fixtureDeps([warn]), 'fixture_echo', { text: 'x' }))).toBe('ok\n\nwarnings: W1');
+    expect(resultText(await callTool(fixtureDeps([warn]), 'fixture_echo', { text: 'x' }))).toBe('ok\n\nwarnings: W1');
+  });
+
+  it('logs transport errors, start and close', async () => {
+    const deps = fixtureDeps();
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const server = await new McpServerAdapter({ ...deps, version: '1.2.3' }).connect(serverSide);
+    server.onerror?.(new TypeError('bad frame'));
+    await clientSide.close();
+    expect(deps.store.logger.events.map((e) => [e.level, e.event])).toEqual([
+      ['debug', 'mcp.started'],
+      ['error', 'mcp.transport_error'],
+      ['debug', 'mcp.closed'],
+    ]);
   });
 
   it('describes operations without required fields without a required list', () => {
