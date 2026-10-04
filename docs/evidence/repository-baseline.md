@@ -2,8 +2,7 @@
 
 > Proof of the repository and process rules of [`spec.md`](../specs/warlog/spec.md) §3.11–§3.12
 > (WL-50..WL-55, WL-76, SEC-01..SEC-20, SEC-26..SEC-30). Collected with `gh` (account with org
-> admin) on 2026-10-03/04. SEC-31 is evidenced at the first release (US-104); P-03 (`verify`)
-> is appended by US-93.
+> admin) on 2026-10-03/04. SEC-31 is evidenced at the first release (US-104).
 
 ## Waivers (SEC-30)
 
@@ -51,8 +50,9 @@ None.
 | WL-54 | PR #1 file list | `docs/specs/warlog/**`, CODEOWNERS, SECURITY.md, Dependabot, `pr-title`, `dependency-review`, `release-please`, guides | 2026-10-04 |
 | WL-55 | `git log origin/main` | English Conventional Commits; no agent co-author trailer; explicit staging | 2026-10-04 |
 | WL-76 | `head -1 README*.md`; `grep -c '^## '` | nav line first in EN/PT/JA; 8 sections each; `CLAUDE.md`, `CONTRIBUTING.md` present | 2026-10-04 |
+| P-03, SEC-27 | `gh pr checks 3` then `main-integrity` update | `verify (ubuntu-latest)`, `verify (macos-latest)`, `verify (windows-latest)` reported pass on PR #3 head, then added to `required_status_checks` (with `validate`, `dependency-review`) | 2026-10-04 |
+| P-03 | Probe PR #5 (undocumented method in `src/core/probe.ts`), closed unmerged | `verify` **fail** on the 3 OSes: `3:6 error Missing JSDoc comment jsdoc/require-jsdoc` | 2026-10-04 |
 
 ## Known open items
 
-- `release-please` on `main` fails with `Missing required file: package.json` until US-93 adds the package scaffold (no Release PR may be merged before it).
 - Release PRs opened with `GITHUB_TOKEN` do not trigger `pull_request` workflows; the required checks must be satisfiable for the first Release PR — decided before US-104.

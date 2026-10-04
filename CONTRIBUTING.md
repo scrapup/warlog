@@ -14,7 +14,7 @@ amending the specification.
 
 ## Prerequisites and setup
 
-- Node.js from `.nvmrc` (`nvm use`); `engines.node` is `>=22`. The package scaffold and npm scripts arrive with the first code PR.
+- Node.js from [`.nvmrc`](.nvmrc) (`nvm use`); `engines.node` is `>=22`.
 
 ```bash
 git clone git@github.com:scrapup/warlog.git
@@ -62,6 +62,11 @@ benchmarks.
 - Integration/e2e tests updated when the change touches a flow.
 - `verify` green on Linux, macOS and Windows.
 - Evidence (command + output summary) attached to the PR.
+
+## Code scanning
+
+CodeQL findings are triaged in [`docs/evidence/codeql-triage.md`](docs/evidence/codeql-triage.md):
+real findings are fixed with a test; false positives are closed with a written justification.
 
 ## Reporting vulnerabilities
 
