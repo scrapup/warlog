@@ -32,17 +32,23 @@ export function fastestElapsedMs(fn: () => unknown, runs = 5): number {
   return Math.min(...Array.from({ length: runs }, () => elapsedMs(fn)));
 }
 
+/** Size factor of {@link scalingRatio}: linear code takes ≈ 4× longer, quadratic ≈ 16×. */
+export const SCALING_FACTOR = 4;
+
+/** Ratio below which {@link scalingRatio} is considered linear (midway between 4 and 16). */
+export const LINEAR_RATIO_LIMIT = 8;
+
 /**
- * Ratio between the time on an input twice as large and on the base input; ≈ 2 for a linear
- * algorithm, ≈ 4 for a quadratic one.
+ * Ratio between the time on an input {@link SCALING_FACTOR} times as large and on the base
+ * input (fastest runs).
  * @param make - Builds an input of the given size.
  * @param run - Function under test.
  * @param size - Base size.
- * @returns `time(2·size) / time(size)` (fastest runs).
+ * @returns `time(4·size) / time(size)`.
  */
 export function scalingRatio<T>(make: (size: number) => T, run: (input: T) => unknown, size: number): number {
   const small = make(size);
-  const large = make(size * 2);
+  const large = make(size * SCALING_FACTOR);
   const base = Math.max(fastestElapsedMs(() => run(small)), 0.05);
   return fastestElapsedMs(() => run(large)) / base;
 }

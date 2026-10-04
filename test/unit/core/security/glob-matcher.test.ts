@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { GlobMatcher, MAX_GLOB_LENGTH } from '../../../../src/core/security/glob-matcher.ts';
-import { ADVERSARIAL_LENGTH, scalingRatio } from '../../../support/timing.ts';
+import { ADVERSARIAL_LENGTH, LINEAR_RATIO_LIMIT, scalingRatio } from '../../../support/timing.ts';
 
 /** Equivalence cases (fixture protected by CHECKSUMS). */
 const CASES = JSON.parse(readFileSync('test/fixtures/security/glob-cases.json', 'utf8')) as Array<{
@@ -32,6 +32,6 @@ describe('GlobMatcher', () => {
   it('[SEC-22][WL-48] scales linearly in the path length', () => {
     const pattern = '*a'.repeat(32);
     const ratio = scalingRatio((n) => 'a'.repeat(n) + 'b', (path) => new GlobMatcher().matches(pattern, path), ADVERSARIAL_LENGTH);
-    expect(ratio).toBeLessThan(3);
+    expect(ratio).toBeLessThan(LINEAR_RATIO_LIMIT);
   });
 });

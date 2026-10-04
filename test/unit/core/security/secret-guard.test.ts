@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { MAX_SECRET_SCAN_DEPTH, SecretGuard } from '../../../../src/core/security/secret-guard.ts';
-import { ADVERSARIAL_LENGTH, scalingRatio } from '../../../support/timing.ts';
+import { ADVERSARIAL_LENGTH, LINEAR_RATIO_LIMIT, scalingRatio } from '../../../support/timing.ts';
 
 /** Secret samples assembled at run time so no secret-looking literal is committed. */
 const SAMPLES: ReadonlyArray<readonly [string, string]> = [
@@ -83,8 +83,8 @@ describe('SecretGuard', () => {
     expect(Array.isArray(new SecretGuard().scan(text))).toBe(true);
   });
 
-  it('[SEC-22][SEC-21] scales linearly (doubling the input at most triples the time)', () => {
+  it('[SEC-22][SEC-21] scales linearly (4× the input stays well below 16× the time)', () => {
     const ratio = scalingRatio((n) => ['s', 'k-'].join('').repeat(n), (text) => new SecretGuard().scan(text), ADVERSARIAL_LENGTH);
-    expect(ratio).toBeLessThan(3);
+    expect(ratio).toBeLessThan(LINEAR_RATIO_LIMIT);
   });
 });
