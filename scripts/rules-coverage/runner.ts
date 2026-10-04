@@ -5,10 +5,10 @@
  */
 import { checkCoverage, parseAllowList, renderReport } from './coverage-check.ts';
 import type { CoverageResult } from './coverage-check.ts';
-import type { RulesFileSystem } from './file-system.ts';
 import { parseJestReport } from './jest-report.ts';
 import type { RuleProof } from './jest-report.ts';
 import { extractSpecRuleIds } from './rule-ids.ts';
+import type { FileSystem } from '../../src/core/ports/file-system.port.ts';
 
 /** Options of one run. */
 export interface RulesCoverageOptions {
@@ -76,14 +76,14 @@ export function parseArgs(argv: readonly string[]): RulesCoverageOptions {
  * @throws {Error} `MalformedReportError` when a report is malformed.
  * @throws {Error} When the directory holds no report.
  */
-async function readProofs(fs: RulesFileSystem, dir: string): Promise<RuleProof[]> {
-  const files = (await fs.listDir(dir)).filter((f) => f.endsWith('.json')).sort();
+async function readProofs(fs: FileSystem, dir: string): Promise<RuleProof[]> {
+  const files = (await fs.readDir(dir)).filter((f) => f.endsWith('.json')).sort();
   if (files.length === 0) {
     throw new Error(`no Jest JSON report in ${dir}`);
   }
   const proofs: RuleProof[] = [];
   for (const file of files) {
-    proofs.push(...parseJestReport(file, await fs.readText(`${dir}/${file}`)));
+    proofs.push(...parseJestReport(file, await fs.readFile(`${dir}/${file}`)));
   }
   return proofs;
 }
@@ -129,14 +129,14 @@ function reasonOf(error: unknown): string {
  * @param fs - File system.
  * @returns Exit code and summary; never throws.
  */
-export async function runRulesCoverage(options: RulesCoverageOptions, fs: RulesFileSystem): Promise<RulesCoverageOutcome> {
+export async function runRulesCoverage(options: RulesCoverageOptions, fs: FileSystem): Promise<RulesCoverageOutcome> {
   try {
-    const specRules = extractSpecRuleIds(await fs.readText(options.specPath));
+    const specRules = extractSpecRuleIds(await fs.readFile(options.specPath));
     const proofs = await readProofs(fs, options.reportsDir);
     const allow =
-      options.allowMissingPath === undefined ? new Set<string>() : parseAllowList(await fs.readText(options.allowMissingPath));
+      options.allowMissingPath === undefined ? new Set<string>() : parseAllowList(await fs.readFile(options.allowMissingPath));
     const result = checkCoverage(specRules, proofs, allow);
-    await fs.writeText(options.outPath, renderReport(result, options.specPath));
+    await fs.writeFileAtomic(options.outPath, renderReport(result, options.specPath));
     return outcomeOf(result, options.specPath);
   } catch (error: unknown) {
     return failure(reasonOf(error));
@@ -149,7 +149,7 @@ export async function runRulesCoverage(options: RulesCoverageOptions, fs: RulesF
  * @param fs - File system.
  * @returns The outcome.
  */
-export async function runFromArgs(argv: readonly string[], fs: RulesFileSystem): Promise<RulesCoverageOutcome> {
+export async function runFromArgs(argv: readonly string[], fs: FileSystem): Promise<RulesCoverageOutcome> {
   let options: RulesCoverageOptions;
   try {
     options = parseArgs(argv);

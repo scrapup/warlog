@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
-import type { RulesFileSystem } from '../../../../scripts/rules-coverage/file-system.ts';
 import { expectedCodeLevelIds } from '../../../../scripts/rules-coverage/rule-ids.ts';
 import { parseArgs, runFromArgs, runRulesCoverage } from '../../../../scripts/rules-coverage/runner.ts';
+import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
 
 /** Specification declaring every code-level rule. */
 const FULL_SPEC = expectedCodeLevelIds()
@@ -27,22 +27,9 @@ function report(assertions: Array<{ title: string; status: string }>): string {
  * @param files - Initial files by path.
  * @returns The fake and the map holding written files.
  */
-function memoryFs(files: Record<string, string>): { fs: RulesFileSystem; store: Map<string, string> } {
-  const store = new Map(Object.entries(files));
-  const fs: RulesFileSystem = {
-    readText: async (path) => {
-      const content = store.get(path);
-      if (content === undefined) {
-        throw new Error(`ENOENT ${path}`);
-      }
-      return content;
-    },
-    writeText: async (path, content) => {
-      store.set(path, content);
-    },
-    listDir: async (path) => [...store.keys()].filter((k) => k.startsWith(`${path}/`)).map((k) => k.slice(path.length + 1)),
-  };
-  return { fs, store };
+function memoryFs(files: Record<string, string>): { fs: MemoryFileSystem; store: Map<string, string> } {
+  const fs = new MemoryFileSystem(files);
+  return { fs, store: fs.files };
 }
 
 /** Default run options pointing at the in-memory fixtures. */
@@ -112,13 +99,8 @@ describe('runRulesCoverage', () => {
 
   it('exits 1 on a non-Error failure', async () => {
     const { fs } = memoryFs({});
-    const failing: RulesFileSystem = {
-      ...fs,
-      readText: async () => {
-        throw 'boom';
-      },
-    };
-    expect(await runRulesCoverage(OPTIONS, failing)).toEqual({ exitCode: 1, message: 'rules-coverage failed: boom' });
+    fs.readFile = async () => Promise.reject('boom');
+    expect(await runRulesCoverage(OPTIONS, fs)).toEqual({ exitCode: 1, message: 'rules-coverage failed: boom' });
   });
 });
 
