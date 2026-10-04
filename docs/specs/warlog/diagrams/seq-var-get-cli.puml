@@ -1,0 +1,31 @@
+@startuml
+title US-98 - warlog var get from a hook (point loading; success and failure)
+actor "Hook / script" as h
+participant "CLI adapter" as cli
+participant "Mediator" as med
+participant "var_get handler" as hd
+participant "VarRepository" as vr
+database "project / repo / global vars" as fs
+h -> cli: warlog var get forge.parallel_executors [--path p]
+cli -> med: send(var_get) (load = point, no full index)
+med -> hd: pipeline -> handle
+hd -> vr: read(project scope)
+alt Found
+  vr --> hd: value
+else Missing
+  hd -> vr: read(repo scope)
+  alt Missing
+    hd -> vr: read(global scope)
+  end
+end
+alt No scope has it
+  hd --> cli: NOT_FOUND
+  cli --> h: exit 2
+else File invalid (type mismatch)
+  hd --> cli: INVALID_FILE
+  cli --> h: exit 1
+else Resolved
+  hd --> cli: {value, type, scope}
+  cli --> h: raw scalar on stdout, exit 0
+end
+@enduml

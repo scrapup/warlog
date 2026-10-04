@@ -1,0 +1,21 @@
+@startuml
+title US-103 / US-104 - plugin load and first release (success and failure)
+actor Validator as v
+participant "GitHub (release-please)" as rp
+participant "npm registry" as npm
+participant "Claude Code" as cc
+participant "warlog mcp (npx)" as mcp
+rp -> rp: accumulate feat/fix commits -> Release PR 0.1.0
+v -> rp: approve + merge Release PR
+rp -> rp: tag v0.1.0 + GitHub Release; bump plugin.json / marketplace.json / .mcp.json
+rp -> npm: npm publish --provenance --access public
+alt Publish fails (permissions / provenance)
+  npm --> rp: error
+  rp --> v: fix via PR with minimum permission change (never bypass)
+else Published
+  v -> cc: /plugin install warlog (marketplace scrapup/warlog)
+  cc -> mcp: npx -y @scrapup/warlog@0.1.0 mcp
+  mcp --> cc: tools/list = registry
+  cc -> cc: load skill warlog (operations catalog)
+end
+@enduml

@@ -1,0 +1,66 @@
+@startuml
+title warlog - task_update through the mediator (success and failure paths)
+
+actor "Agent / Script" as caller
+participant "MCP or CLI adapter" as adapter
+participant "Mediator" as med
+participant "ErrorMapping" as err
+participant "Context" as ctx
+participant "Validation" as val
+participant "SecretGuard" as sec
+participant "Activity" as act
+participant "task_update handler" as h
+participant "Index" as idx
+participant "FileRepository" as repo
+database "Store folder" as fs
+
+caller -> adapter: task_update {id, status: done}
+adapter -> med: send("task_update", input)
+med -> err: run pipeline
+err -> ctx: next()
+ctx -> ctx: resolve root, repo key (git remote), machine id
+ctx -> val: next()
+
+alt Input invalid
+  val --> err: ValidationError(field paths)
+  err --> adapter: VALIDATION
+  adapter --> caller: MCP isError / CLI exit 3
+else Input valid
+  val -> sec: next()
+  alt Secret pattern found
+    sec --> err: SecretRejected(field)
+    err --> adapter: SECRET_REJECTED
+    adapter --> caller: MCP isError / CLI exit 1
+  else Clean
+    sec -> act: next()
+    act -> h: next()
+    h -> idx: get(task) + dependencies + subtasks
+    alt Task not found
+      h --> err: NotFound
+      err --> adapter: NOT_FOUND
+      adapter --> caller: MCP isError / CLI exit 2
+    else Unfinished subtasks and no force
+      h --> err: Validation("unfinished subtasks")
+      err --> adapter: VALIDATION
+    else Allowed
+      h -> repo: update(task, expectedRev = index.rev)
+      repo -> fs: read current file
+      alt File rev != expectedRev (other session / sync changed it)
+        repo --> h: Conflict(current state)
+        h --> err: Conflict
+        err --> adapter: CONFLICT + current state
+        adapter --> caller: MCP isError / CLI exit 4
+      else Rev matches
+        repo -> fs: write temp file, fsync, rename (rev + 1)
+        repo -> idx: upsert(task); recompute blocked/unblocked dependents
+        h --> act: result (task + side effects)
+        act -> fs: append activity/<machine-id>/<date>.jsonl
+        act --> err: result
+        err --> med: result
+        med --> adapter: result
+        adapter --> caller: front matter + body (or json)
+      end
+    end
+  end
+end
+@enduml

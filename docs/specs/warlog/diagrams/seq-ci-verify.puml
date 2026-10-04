@@ -1,0 +1,29 @@
+@startuml
+title US-93 - verify pipeline on a pull request (success and failure)
+actor Maintainer as m
+participant "GitHub" as gh
+participant "verify (ubuntu|macos|windows)" as v
+participant "rules:coverage" as rc
+m -> gh: open PR (Conventional Commit title)
+gh -> v: run matrix job
+v -> v: npm ci --ignore-scripts
+v -> v: typecheck, lint (JSDoc + SRP guard rails)
+alt Lint or typecheck fails
+  v --> gh: red - merge blocked
+else OK
+  v -> v: test:unit --coverage (global >= 95%)
+  alt Coverage < 95% or a test fails
+    v --> gh: red - merge blocked
+  else OK
+    v -> v: build, npm pack
+    v -> v: test:integration, test:e2e (CLI + MCP from tarball)
+    v -> rc: rule IDs in spec vs Jest titles
+    alt A code-level rule has no passing test
+      rc --> gh: red - list of unproven rules
+    else All rules proven
+      v -> v: bench --ci (index <= 5 s blocking)
+      v --> gh: green + coverage/rules summary
+    end
+  end
+end
+@enduml
