@@ -50,6 +50,7 @@ describe('warlog mcp from the packed tarball', () => {
     const current = mcp();
     await current.client.callTool({ name: 'nope', arguments: {} });
     await current.client.listTools();
+    // Standard error is complete only after the server exits: this closes the shared session, so keep this test last.
     await current.close();
     session = undefined;
     expect(current.errors).toEqual([]);

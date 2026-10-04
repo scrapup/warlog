@@ -15,9 +15,13 @@ describe('failure while wiring the command line', () => {
     const result = runNode([BIN, '--version'], { cwd: iso.cwd, env: iso.env, timeoutMs: 10_000 });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
+    const home = iso.env['HOME'];
+    expect(home).toBeDefined();
     const [log, ...rest] = result.stderr.trimEnd().split('\n');
-    expect(JSON.parse(log ?? '')).toMatchObject({ level: 'error', event: 'cli.failed', error_code: 'INTERNAL', error_name: 'WarlogError' });
-    expect(rest.join('\n')).toMatch(/^INTERNAL: operation fixture_echo: description is empty/);
-    expect(result.stderr).not.toContain(iso.env['HOME'] ?? '<no home>');
+    const entry: Record<string, unknown> = JSON.parse(log ?? '');
+    expect(entry).toMatchObject({ level: 'error', event: 'cli.failed', error_code: 'INTERNAL', error_name: 'WarlogError' });
+    expect(Object.keys(entry).sort()).toEqual(['error_code', 'error_name', 'event', 'level', 'ts']);
+    expect(rest.join('\n')).toBe('INTERNAL: cannot load operations from ~/plugins');
+    expect(result.stderr).not.toContain(String(home));
   }, 30_000);
 });

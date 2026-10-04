@@ -5,8 +5,8 @@
 import { z } from 'zod';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import { toIssues } from '../../core/mediator/behaviors/validation.behavior.ts';
-import { isPlainRecord } from '../../core/security/plain-record.ts';
 import type { PresentOptions } from '../../core/presenter/presenter.ts';
+import { isPlainRecord } from '../../core/security/plain-record.ts';
 
 /** Output formats. */
 export const OUTPUT_FORMATS = ['table', 'yaml', 'json'] as const;

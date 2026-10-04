@@ -86,8 +86,14 @@ describe('MCP adapter', () => {
   });
 
   it('[WL-38] keeps a successful command when its output options cannot be applied, with a warning', async () => {
-    const result = await callTool(fixtureDeps(), 'fixture_note_create', { title: 'T', format: 'table' });
+    const deps = fixtureDeps();
+    const result = await callTool(deps, 'fixture_note_create', { title: 'T', format: 'table' });
     expect(result.isError).toBeUndefined();
+    expect(deps.store.logger.events).toContainEqual({
+      level: 'debug',
+      event: 'output.options_ignored',
+      fields: { op: 'fixture_note_create', error_code: 'VALIDATION', error_name: 'WarlogError' },
+    });
     expect(resultText(result)).toMatch(/title: T[\s\S]*\n\nwarnings: output\.options_ignored$/);
   });
 

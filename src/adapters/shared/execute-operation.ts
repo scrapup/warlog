@@ -89,12 +89,9 @@ export function formatError(error: WarlogError): string {
  * @returns The failure.
  */
 export function toLoggedFailure(deps: Pick<ExecuteDeps, 'logger' | 'redactions'>, name: string, error: unknown): ExecuteFailure {
-  if (error instanceof WarlogError) {
-    const cause = error.cause === undefined ? {} : { cause: errorFields(error.cause) };
-    deps.logger.log('debug', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error), ...cause });
-  } else {
-    deps.logger.log('error', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error) });
-  }
+  const stable = error instanceof WarlogError;
+  const cause = stable && error.cause !== undefined ? { cause: errorFields(error.cause) } : {};
+  deps.logger.log(stable ? 'debug' : 'error', 'op.failed', { op: name, stage: 'adapter', ...errorFields(error), ...cause });
   return { ok: false, error: redactError(toWarlogError(error), deps.redactions) };
 }
 
@@ -115,7 +112,7 @@ function render(deps: ExecuteDeps, request: RenderRequest): ExecuteSuccess {
     if (definition.kind !== 'command' || !isWarlogError(error, 'VALIDATION')) {
       throw error;
     }
-    deps.logger.log('debug', 'output.options_ignored', { op: definition.name, ...errorFields(error) });
+    deps.logger.log('debug', OUTPUT_OPTIONS_IGNORED, { op: definition.name, ...errorFields(error) });
     return { ok: true, text: deps.presenter.present(result, definition.defaultFormat), warnings: [OUTPUT_OPTIONS_IGNORED] };
   }
 }

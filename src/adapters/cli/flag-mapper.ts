@@ -90,8 +90,9 @@ const OPTIONAL_WRAPPERS = new Set(['optional', 'default', 'prefault']);
 /**
  * Views a zod schema through the fields this module reads. zod v4 exposes `def` (`type`,
  * `innerType`, `element`, `entries`, `defaultValue`) and `description` as its introspection API,
- * but object shapes are typed with the core `$ZodType`, hence this single cast; the fields read
- * are pinned for the installed zod version by `flag-mapper.test.ts`.
+ * but object shapes are typed with the core `$ZodType`, which does not overlap `SchemaNode`
+ * structurally, hence this single `as unknown as` cast; the fields read are pinned for the
+ * installed zod version by `flag-mapper.test.ts`.
  * @param schema - A zod schema.
  * @returns Its introspection view.
  */

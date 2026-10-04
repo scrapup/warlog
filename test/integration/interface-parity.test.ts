@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fieldSpecs } from '../../src/adapters/cli/flag-mapper.ts';
 import { FIXTURE_OPERATIONS } from '../support/fixture-operations.ts';
@@ -70,6 +70,17 @@ function normalize(text: string): string {
     .replace(/m-[0-9a-z]{8}/g, '<MACHINE>');
 }
 
+/**
+ * Counts activity records (one JSON line each) in a store.
+ * @param store - Store root.
+ * @returns Number of records.
+ */
+function activityRecords(store: string): number {
+  return filesUnder(store)
+    .filter((f) => f.includes('activity'))
+    .reduce((n, f) => n + readFileSync(f, 'utf8').split('\n').filter((line) => line.trim() !== '').length, 0);
+}
+
 describe('interface parity over the full registry', () => {
   it('[WL-35] exposes exactly the registry entries as MCP tools', async () => {
     const { tools } = await setup().mcp.client.listTools();
@@ -101,9 +112,11 @@ describe('interface parity over the full registry', () => {
 
   it('[WL-18] records command activity in the isolated store only', async () => {
     const { iso: env, mcp } = setup();
-    await mcp.client.callTool({ name: 'fixture_note_create', arguments: { title: 'activity' } });
+    const before = activityRecords(env.store);
+    const viaMcp = await mcp.client.callTool({ name: 'fixture_note_create', arguments: { title: 'activity' } });
+    expect(viaMcp.isError).not.toBe(true);
     expect(cli(['fixture', 'note-create', '--title', 'activity']).status).toBe(0);
-    expect(filesUnder(env.store).filter((f) => f.includes('activity')).length).toBeGreaterThan(0);
+    expect(activityRecords(env.store) - before).toBe(2);
     expect(filesUnder(env.cwd)).toEqual([]);
   }, 30_000);
 
