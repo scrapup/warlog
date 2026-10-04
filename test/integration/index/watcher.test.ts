@@ -95,6 +95,7 @@ describe('watcher on the real file system', () => {
     expect(service.fallback).toBe(true);
     expect(logger.events.map((e) => e.event)).toContain('watcher.fallback');
     writeMemory(join(watchRoots.global, 'global', 'memories'), M2);
-    await waitFor(index, M2, 7_000);
-  }, 15_000);
+    // First fallback rescan runs RESCAN_MS (5 s) after the failure; allow for loaded CI runners.
+    await waitFor(index, M2, 12_000);
+  }, 20_000);
 });

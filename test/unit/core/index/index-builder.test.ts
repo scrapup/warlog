@@ -200,6 +200,21 @@ describe('IndexBuilder.reload', () => {
     expect(index.excluded.invalidFiles()).toEqual([]);
   });
 
+  it('[WL-06] indexes a directory that appears with its files, and leaves skipped areas alone', async () => {
+    const fs = store();
+    const builder = new IndexBuilder({ fs, clock: new FixedClock() });
+    const { index } = await builder.build(ROOTS);
+    const N = '01J00000000000000000000N07';
+    fs.files.set(repo('projects', P, 'notes', `${N}.md`), entity({ id: N, type: 'note', project_id: P }));
+    fs.files.set(repo('projects', P, 'notes', `.${N}.md.tmp-1-x`), 'partial');
+    await builder.reload(index, ROOTS, repo('projects', P, 'notes'));
+    expect(index.get(N)?.type).toBe('note');
+    expect(index.excluded.tempFiles()).toHaveLength(1);
+    fs.files.set(repo('activity', 'm', '2026-10-03.jsonl'), '{}\n');
+    await builder.reload(index, ROOTS, repo('activity', 'm', '2026-10-03.jsonl'));
+    expect(index.excluded.invalidFiles()).toEqual([]);
+  });
+
   it('[WL-06] forgets every file of a deleted directory', async () => {
     const fs = store();
     const builder = new IndexBuilder({ fs, clock: new FixedClock() });

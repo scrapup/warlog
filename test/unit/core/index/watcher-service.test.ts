@@ -200,6 +200,47 @@ describe('WatcherService fallback', () => {
     expect(index.get(M1)).toBeDefined();
   });
 
+  it('reloads a path changed again while its reload runs once more afterwards', async () => {
+    const { fs, index, timers, repo } = await setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const realLstat = fs.lstat.bind(fs);
+    let calls = 0;
+    fs.lstat = async (path) => {
+      calls += 1;
+      if (calls === 1) {
+        await gate;
+      }
+      return realLstat(path);
+    };
+    fs.files.set(join(REPO_ROOT, 'memories', `${M2}.md`), memory(M2, 'v1'));
+    repo(`memories/${M2}.md`);
+    timers.advance(DEBOUNCE_MS);
+    await settle();
+    fs.files.set(join(REPO_ROOT, 'memories', `${M2}.md`), memory(M2, 'v2'));
+    repo(`memories/${M2}.md`);
+    timers.advance(DEBOUNCE_MS);
+    await settle();
+    release();
+    await settle();
+    expect(index.get(M2)?.record.data['title']).toBe('v2');
+  });
+
+  it('stops scheduling rescans when stopped during a fallback cycle', async () => {
+    const { fs, watcher, timers, service } = await setup();
+    watcher.errors.get(REPO_ROOT)?.(new Error('x'));
+    const realReadDir = fs.readDir.bind(fs);
+    fs.readDir = async (path, options) => {
+      service.stop();
+      return realReadDir(path, options);
+    };
+    timers.advance(RESCAN_MS);
+    await settle();
+    expect(timers.size).toBe(0);
+  });
+
   it('stops watches, pending reloads and rescans', async () => {
     const { watcher, timers, service, repo } = await setup();
     repo(`memories/${M1}.md`);
