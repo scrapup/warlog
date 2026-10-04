@@ -6,7 +6,7 @@ import { REPO_ROOT, memoryStore } from '../../../support/store-fixture.ts';
 const INPUT = { action: 'created', entity_type: 'task', entity_id: '01J00000000000000000000002', summary: 'Task created' } as const;
 
 describe('ActivityLog', () => {
-  it('[WL-04][WL-18] appends JSON lines to <root>/activity/<machine>/<day>.jsonl', async () => {
+  it('[WL-04] appends JSON lines to <root>/activity/<machine>/<day>.jsonl', async () => {
     const store = memoryStore();
     expect(await store.activity.append(REPO_ROOT, { ...INPUT, project_id: 'P', extra: { outcome: 'ok' } })).toBeUndefined();
     await store.activity.append(REPO_ROOT, { ...INPUT, action: 'updated', forced: true });
