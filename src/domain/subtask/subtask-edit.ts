@@ -67,13 +67,6 @@ function applyBlocks(list: Subtask[], id: string, blocks: readonly string[]): Su
  * @returns The new subtask.
  */
 function withDeps(subtask: Subtask, deps: readonly string[]): Subtask {
-  const base: Subtask = {
-    id: subtask.id,
-    title: subtask.title,
-    status: subtask.status,
-    sort_order: subtask.sort_order,
-    ...(subtask.created_at === undefined ? {} : { created_at: subtask.created_at }),
-    ...(subtask.updated_at === undefined ? {} : { updated_at: subtask.updated_at }),
-  };
+  const base = Object.fromEntries(Object.entries(subtask).filter(([k]) => k !== 'depends_on')) as unknown as Subtask;
   return deps.length > 0 ? { ...base, depends_on: [...deps] } : base;
 }

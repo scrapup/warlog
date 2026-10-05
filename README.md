@@ -62,6 +62,18 @@ Manual MCP registration:
 { "mcpServers": { "mcp-warlog": { "command": "npx", "args": ["-y", "@scrapup/warlog", "mcp"] } } }
 ```
 
+## Switching from `mcp-saga`
+
+warlog offers every `mcp-saga` tool with the same name, parameters, enums and defaults, so a workflow
+switches by pointing at `mcp-warlog` instead. The deliberate differences:
+
+- Identifiers are opaque strings (ULIDs), not integers.
+- `note_delete` is a soft delete; `note_restore` brings a note back.
+- Stories sit between epics and tasks (`story_*`); `task_create` accepts `story_id`, and `epic_id`
+  becomes optional when a story is given.
+- Existing state comes over on demand: `tracker_export` from `mcp-saga`, then `tracker_import` in
+  warlog (every id is remapped; an invalid export writes nothing).
+
 ## Storage model
 
 | Root | Location | Holds | Travels via |

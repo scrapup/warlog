@@ -65,6 +65,18 @@ Registro manual do MCP:
 { "mcpServers": { "mcp-warlog": { "command": "npx", "args": ["-y", "@scrapup/warlog", "mcp"] } } }
 ```
 
+## Migrando do `mcp-saga`
+
+O warlog oferece todas as ferramentas do `mcp-saga` com o mesmo nome, parâmetros, enums e defaults;
+um *workflow* migra apontando para `mcp-warlog`. As diferenças deliberadas:
+
+- Identificadores são *strings* opacas (ULIDs), não inteiros.
+- `note_delete` é *soft delete*; `note_restore` recupera a nota.
+- *Stories* ficam entre *epics* e *tasks* (`story_*`); `task_create` aceita `story_id`, e `epic_id`
+  passa a ser opcional quando uma *story* é informada.
+- O estado existente é trazido sob demanda: `tracker_export` no `mcp-saga` e `tracker_import` no
+  warlog (todos os ids são remapeados; um *export* inválido não grava nada).
+
 ## Modelo de armazenamento
 
 | Raiz | Local | Contém | Viaja via |

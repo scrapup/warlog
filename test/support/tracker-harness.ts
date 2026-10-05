@@ -44,6 +44,8 @@ export interface TrackerHarness extends MemoryStore {
   readonly contexts: OperationContext[];
   /** Warnings returned so far. */
   readonly warnings: string[];
+  /** Warning codes every new context starts with (e.g. `repo.local_scope`). */
+  contextWarnings: string[];
   /**
    * Calls an operation through the mediator.
    * @param name - Operation name.
@@ -101,6 +103,7 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
     branch: 'main' as string | undefined,
     contexts: [] as OperationContext[],
     warnings: [] as string[],
+    contextWarnings: [] as string[],
   };
   const contexts: OperationContextFactory = {
     create: async (request: ContextRequest): Promise<OperationContext> => {
@@ -113,7 +116,7 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
         currentBranch: async () => harness.branch,
         index: indexes.sourceFor(store.roots, request.load, request.operation),
         activity: [],
-        warnings: [],
+        warnings: [...harness.contextWarnings],
       };
       harness.contexts.push(context);
       return context;

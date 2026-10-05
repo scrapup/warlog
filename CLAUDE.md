@@ -39,7 +39,15 @@ registry content; field names reserved by the interfaces are rejected by the reg
 and refusing files above 2 MiB; `StoreIndex` view with relations, pending links and excluded
 files; `WatcherService` with per-root rescan fallback; `IndexProvider` — lazy point reads in the
 CLI, live index with watcher in the MCP server, `load: point` enforced in both) and
-`src/domain/health` (`doctor`). Test doubles live in `test/support/fakes`; fixture
+`src/domain/health` (`doctor`). Tracker (US-97): `src/domain/{project,epic,story,task,subtask,note,comment,template,tracker}` —
+the `mcp-saga` operations with identical names, parameters, enums and defaults (ids are ULID
+strings) plus stories and `note_restore`; `src/domain/shared` (`TrackerWriter`: writes through
+`EntityFileRepository`, refreshes the view for read-your-writes and queues activity; lookup,
+project/branch scope, literal token search, result rows); `task/dependency-engine.ts` (pure
+block/unblock and cycle rules); `IndexSource.lookup`/`refresh` and `StoreView.ofType`;
+`core/index/activity-reader.ts` (raw activity for `activity_log`, session diff, dashboard). The saga
+parity contract (`test/integration/saga-parity.test.ts`) compares against fixtures captured from a
+real `saga-mcp` by `scripts/capture-saga-fixtures.ts` — never edit them by hand. Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

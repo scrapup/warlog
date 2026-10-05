@@ -133,6 +133,21 @@ export class TrackerWriter {
   }
 
   /**
+   * Soft-deletes an entity this call has just created (`rev: 1`), e.g. an imported record that was
+   * removed in its source.
+   * @param ref - Entity reference.
+   * @param deletion - Who and why.
+   * @param summary - Activity summary.
+   * @returns The stored record.
+   * @throws {WarlogError} `CONFLICT` when it changed since its creation.
+   */
+  async softDeleteCreated(ref: EntityRef, deletion: DeletionInfo, summary: string): Promise<EntityRecord> {
+    const record = await this.store.repo.softDelete(ref, 1, deletion);
+    await this.applied(ref, [{ action: 'deleted', summary }]);
+    return record;
+  }
+
+  /**
    * Restores a soft-deleted entity (WL-08) and records `restored`.
    * @param entity - Entity as seen.
    * @param summary - Activity summary.

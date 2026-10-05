@@ -12,8 +12,8 @@ import type { ActivityEvent } from './tracker-writer.ts';
 export interface ChangeSpec {
   /** Input fields copied to the front matter when present. */
   readonly fields: readonly string[];
-  /** Input field holding the new body, when the entity has one. */
-  readonly bodyField?: string;
+  /** Input field holding the new body. */
+  readonly bodyField: string;
   /** Fields whose change is recorded in the activity log. */
   readonly tracked: readonly string[];
 }
@@ -27,9 +27,9 @@ export interface ChangeSpec {
  */
 export function changeFrom(input: Readonly<Record<string, unknown>>, spec: ChangeSpec): EntityChange {
   const patch = Object.fromEntries(spec.fields.filter((f) => input[f] !== undefined).map((f) => [f, input[f]]));
-  const body = spec.bodyField === undefined ? undefined : input[spec.bodyField];
+  const body = input[spec.bodyField];
   if (Object.keys(patch).length === 0 && body === undefined) {
-    throw new WarlogError('VALIDATION', 'No fields to update', { fields: [...spec.fields, ...(spec.bodyField === undefined ? [] : [spec.bodyField])] });
+    throw new WarlogError('VALIDATION', 'No fields to update', { fields: [...spec.fields, spec.bodyField] });
   }
   return typeof body === 'string' ? { patch, body } : { patch };
 }

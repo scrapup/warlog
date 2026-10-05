@@ -95,14 +95,14 @@ export function overdueTasks(view: StoreView, scope: TrackerScope, today: string
 }
 
 /**
- * The ten most recent activity records of a project (all projects when `undefined`).
+ * The ten most recent activity records of a project.
  * @param records - Records, oldest first.
  * @param projectId - Project.
  * @returns Rows, newest first.
  */
-export function recentActivity(records: readonly ActivityRecord[], projectId: string | undefined): Row[] {
+export function recentActivity(records: readonly ActivityRecord[], projectId: string): Row[] {
   return records
-    .filter((r) => projectId === undefined || r['project_id'] === projectId)
+    .filter((r) => r['project_id'] === projectId)
     .slice(-10)
     .reverse()
     .map((r) => ({ summary: r['summary'], action: r['action'], entity_type: r['entity_type'], entity_id: r['entity_id'], ts: r['ts'], machine: r['machine'] }));

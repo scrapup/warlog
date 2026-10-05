@@ -49,6 +49,8 @@ import { templateDeleteOperation } from './template/template-delete.operation.ts
 import { templateApplyOperation } from './template/template-apply.operation.ts';
 import { activityLogOperation } from './tracker/activity-log.operation.ts';
 import { trackerDashboardOperation } from './tracker/tracker-dashboard.operation.ts';
+import { trackerExportOperation } from './tracker/tracker-export.operation.ts';
+import { trackerImportOperation } from './tracker/tracker-import.operation.ts';
 import { trackerInitOperation } from './tracker/tracker-init.operation.ts';
 import { trackerNextOperation } from './tracker/tracker-next.operation.ts';
 import { trackerSearchOperation } from './tracker/tracker-search.operation.ts';
@@ -81,6 +83,8 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     trackerNextOperation(),
     trackerSearchOperation(),
     trackerSessionDiffOperation(deps.fs),
+    trackerExportOperation(),
+    trackerImportOperation(writers),
     activityLogOperation(deps.fs),
     projectCreateOperation(writers),
     projectListOperation(),

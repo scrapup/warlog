@@ -62,6 +62,18 @@ MCP の手動登録:
 { "mcpServers": { "mcp-warlog": { "command": "npx", "args": ["-y", "@scrapup/warlog", "mcp"] } } }
 ```
 
+## `mcp-saga` からの移行
+
+warlog は `mcp-saga` のすべてのツールを同じ名前・パラメータ・enum・デフォルト値で提供します。*workflow* は
+接続先を `mcp-warlog` に変えるだけで移行できます。意図的な違いは次のとおりです。
+
+- 識別子は整数ではなく不透明な文字列（ULID）です。
+- `note_delete` はソフトデリートで、`note_restore` でノートを復元できます。
+- *story* は *epic* と *task* の間に位置します（`story_*`）。`task_create` は `story_id` を受け付け、*story* を
+  指定した場合 `epic_id` は省略可能です。
+- 既存の状態は必要なときに移せます。`mcp-saga` で `tracker_export` を実行し、warlog で `tracker_import`
+  を実行します（すべての id は再割り当てされ、不正な *export* は何も書き込みません）。
+
 ## ストレージモデル
 
 | ルート | 場所 | 内容 | 移動手段 |

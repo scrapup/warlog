@@ -1,0 +1,1378 @@
+{
+  "saga_version": "1.19.0",
+  "tools": [
+    {
+      "name": "activity_log",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "project",
+              "epic",
+              "task",
+              "subtask",
+              "note"
+            ],
+            "description": "Filter by entity type"
+          },
+          "entity_id": {
+            "type": "integer",
+            "description": "Filter by specific entity"
+          },
+          "project_id": {
+            "type": "integer",
+            "description": "Scope to one project. Defaults to SAGA_PROJECT if set, else the whole database."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "deleted",
+              "status_changed"
+            ],
+            "description": "Filter by action type"
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO 8601 datetime - show only activity after this time"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "comment_add",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "Task ID to comment on"
+          },
+          "content": {
+            "type": "string",
+            "description": "Comment text"
+          },
+          "author": {
+            "type": "string",
+            "description": "Author name (optional)"
+          }
+        },
+        "required": [
+          "task_id",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "comment_delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Comment ID to remove"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the comment is being removed (recommended — it stays in the audit trail)"
+          },
+          "deleted_by": {
+            "type": "string",
+            "description": "Who removed it (optional)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "comment_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "Task ID"
+          },
+          "include_deleted": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include comments that were removed (soft-deleted). Off by default."
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
+      "name": "comment_restore",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Comment ID to restore"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "epic_archive",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "archived": {
+            "type": "boolean",
+            "default": true,
+            "description": "true to archive, false to bring it back"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "epic_create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "description": "Parent project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Epic name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Epic description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ],
+            "default": "planned"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "default": "medium"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to scope this epic to: \"current\" = active branch, omit/\"\" = branch-agnostic."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "project_id",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "epic_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "description": "Project ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "include_archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include archived epics and their tasks."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch filter: \"current\" = active branch, \"\" = branch-agnostic only, omit = all."
+          }
+        },
+        "required": [
+          "project_id"
+        ]
+      }
+    },
+    {
+      "name": "epic_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Epic ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "sort_order": {
+            "type": "integer"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to scope this epic to: \"current\" = active branch, \"\" = clear."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "note_delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Note ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "note_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note_type": {
+            "type": "string",
+            "enum": [
+              "general",
+              "decision",
+              "context",
+              "meeting",
+              "technical",
+              "blocker",
+              "progress",
+              "release"
+            ]
+          },
+          "related_entity_type": {
+            "type": "string",
+            "enum": [
+              "project",
+              "epic",
+              "task"
+            ]
+          },
+          "related_entity_id": {
+            "type": "integer"
+          },
+          "project_id": {
+            "type": "integer",
+            "description": "Scope to one project. Defaults to SAGA_PROJECT if set, else the whole database."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filter by a single tag"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 30
+          }
+        }
+      }
+    },
+    {
+      "name": "note_save",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Note ID (omit to create new)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Note title"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full note content (markdown supported)"
+          },
+          "note_type": {
+            "type": "string",
+            "enum": [
+              "general",
+              "decision",
+              "context",
+              "meeting",
+              "technical",
+              "blocker",
+              "progress",
+              "release"
+            ],
+            "default": "general"
+          },
+          "related_entity_type": {
+            "type": "string",
+            "enum": [
+              "project",
+              "epic",
+              "task"
+            ],
+            "description": "Link note to an entity"
+          },
+          "related_entity_id": {
+            "type": "integer",
+            "description": "ID of the related entity"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "title",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "note_search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords"
+          },
+          "note_type": {
+            "type": "string",
+            "enum": [
+              "general",
+              "decision",
+              "context",
+              "meeting",
+              "technical",
+              "blocker",
+              "progress",
+              "release"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "project_create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Project description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "on_hold",
+              "completed",
+              "archived"
+            ],
+            "default": "active",
+            "description": "Project status"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for categorization"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "project_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "on_hold",
+              "completed",
+              "archived"
+            ],
+            "description": "Filter by status"
+          }
+        }
+      }
+    },
+    {
+      "name": "project_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Project ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "on_hold",
+              "completed",
+              "archived"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "subtask_create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "Parent task"
+          },
+          "titles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Subtask titles, one per array item — e.g. [\"Write it\", \"Test it\"]. Always an array, even for a single subtask."
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Siblings each new subtask waits on"
+          }
+        },
+        "required": [
+          "task_id",
+          "titles"
+        ]
+      }
+    },
+    {
+      "name": "subtask_delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Subtask IDs to delete — e.g. [4, 7]. Always an array, even for one."
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      }
+    },
+    {
+      "name": "subtask_reorder",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "description": "Parent task"
+          },
+          "ordered_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Subtask IDs, in order"
+          }
+        },
+        "required": [
+          "task_id",
+          "ordered_ids"
+        ]
+      }
+    },
+    {
+      "name": "subtask_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "done"
+            ]
+          },
+          "sort_order": {
+            "type": "integer"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Siblings this one waits on (replaces the set)"
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Siblings that wait on this one — inverse of depends_on"
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Proceed despite unmet prerequisites. Only when a human says the blocker no longer applies, never on your own initiative. Logged."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "task_batch_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Task IDs to update"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "done",
+              "blocked"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "assigned_to": {
+            "type": "string"
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Proceed despite unmet prerequisites. Only when a human says the blocker no longer applies, never on your own initiative. Logged."
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      }
+    },
+    {
+      "name": "task_create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "epic_id": {
+            "type": "integer",
+            "description": "Parent epic ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Task title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "done",
+              "blocked"
+            ],
+            "default": "todo"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "default": "medium"
+          },
+          "assigned_to": {
+            "type": "string",
+            "description": "Assignee name"
+          },
+          "estimated_hours": {
+            "type": "number",
+            "description": "Estimated hours"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "Due date (YYYY-MM-DD)"
+          },
+          "source_ref": {
+            "type": "object",
+            "description": "Link to source code location",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "line_start": {
+                "type": "integer"
+              },
+              "line_end": {
+                "type": "integer"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Repository URL or name"
+              },
+              "commit": {
+                "type": "string",
+                "description": "Commit hash"
+              }
+            },
+            "required": [
+              "file"
+            ]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Task IDs this task depends on"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "epic_id",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "task_delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it is being removed (kept in the audit trail)"
+          },
+          "deleted_by": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "task_get",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Task ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "task_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "epic_id": {
+            "type": "integer",
+            "description": "Filter by epic (omit for all tasks)"
+          },
+          "project_id": {
+            "type": "integer",
+            "description": "Scope to one project. Defaults to SAGA_PROJECT if set, else the whole database."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "done",
+              "blocked"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "assigned_to": {
+            "type": "string",
+            "description": "Filter by assignee"
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filter by tag"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch filter: \"current\" = active branch, \"\" = branch-agnostic only, omit = all."
+          },
+          "include_archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include archived epics and their tasks."
+          },
+          "include_deleted": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include removed tasks."
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": [
+              "priority",
+              "created",
+              "due_date",
+              "status",
+              "manual"
+            ],
+            "description": "Omit to follow the arrangement set by task_reorder, falling back to priority. priority (critical first), created (newest), due_date (earliest), status (actionable first), manual."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50,
+            "description": "Max results"
+          }
+        }
+      }
+    },
+    {
+      "name": "task_lock_description",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Task ID"
+          },
+          "locked": {
+            "type": "boolean",
+            "default": true,
+            "description": "true to lock, false to unlock"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "task_reorder",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "epic_id": {
+            "type": "integer",
+            "description": "Parent epic"
+          },
+          "ordered_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Task IDs, in order"
+          }
+        },
+        "required": [
+          "epic_id",
+          "ordered_ids"
+        ]
+      }
+    },
+    {
+      "name": "task_restore",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "task_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Task ID"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "done",
+              "blocked"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "assigned_to": {
+            "type": "string"
+          },
+          "estimated_hours": {
+            "type": "number"
+          },
+          "actual_hours": {
+            "type": "number"
+          },
+          "due_date": {
+            "type": "string"
+          },
+          "source_ref": {
+            "type": "object",
+            "description": "Link to source code location",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "line_start": {
+                "type": "integer"
+              },
+              "line_end": {
+                "type": "integer"
+              },
+              "repo": {
+                "type": "string",
+                "description": "Repository URL or name"
+              },
+              "commit": {
+                "type": "string",
+                "description": "Commit hash"
+              }
+            },
+            "required": [
+              "file"
+            ]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Task IDs this task depends on (replaces existing)"
+          },
+          "sort_order": {
+            "type": "integer",
+            "description": "Manual position within the epic; lower sorts first. Use task_reorder instead of setting this by hand."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Proceed despite unmet prerequisites. Only when a human says the blocker no longer applies, never on your own initiative. Logged."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "template_apply",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "integer",
+            "description": "Template ID to apply"
+          },
+          "epic_id": {
+            "type": "integer",
+            "description": "Epic to create tasks in"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Key-value pairs for {variable} substitution (e.g., {\"feature\": \"auth\"})",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "template_id",
+          "epic_id"
+        ]
+      }
+    },
+    {
+      "name": "template_create",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Template name (must be unique)"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "description": "The tasks this template creates.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Task title (supports {variable} placeholders)"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Task description (supports {variable} placeholders)"
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ],
+                  "default": "medium"
+                },
+                "estimated_hours": {
+                  "type": "number"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "tasks"
+        ]
+      }
+    },
+    {
+      "name": "template_delete",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Template ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "template_list",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "include_tasks": {
+            "type": "boolean",
+            "description": "Return each template's task definitions, not just a count."
+          }
+        }
+      }
+    },
+    {
+      "name": "template_update",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Template ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tasks": {
+            "type": "array",
+            "description": "Replaces every task. Omit to leave them alone. {variable} works in title and description.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ],
+                  "default": "medium"
+                },
+                "estimated_hours": {
+                  "type": "number"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "tracker_dashboard",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "include_archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include archived epics and their tasks."
+          },
+          "project_id": {
+            "type": "integer",
+            "description": "Project ID. Omit for a single-project database or when SAGA_PROJECT is set. Otherwise the first is used and the rest listed under other_projects."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Scope to a git branch: \"current\" = active branch, \"\" = branch-agnostic only, omit = all."
+          }
+        }
+      }
+    },
+    {
+      "name": "tracker_export",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "description": "Project ID to export (omit if only one project exists)"
+          }
+        }
+      }
+    },
+    {
+      "name": "tracker_import",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "description": "Full export JSON object from tracker_export"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      }
+    },
+    {
+      "name": "tracker_init",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_name": {
+            "type": "string",
+            "description": "Name for a new project (only used if DB is empty)"
+          },
+          "project_description": {
+            "type": "string",
+            "description": "Description for the new project"
+          }
+        }
+      }
+    },
+    {
+      "name": "tracker_next",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "description": "Scope to one project. Defaults to SAGA_PROJECT if set, else the whole database."
+          },
+          "assigned_to": {
+            "type": "string",
+            "description": "Only consider tasks assigned to this person"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch filter: \"current\" = active branch, omit = all."
+          }
+        }
+      }
+    },
+    {
+      "name": "tracker_search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords"
+          },
+          "entity_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "project",
+                "epic",
+                "task",
+                "note"
+              ]
+            },
+            "description": "Limit search to specific entity types (omit for all)"
+          },
+          "project_id": {
+            "type": "integer",
+            "description": "Scope to one project. Defaults to SAGA_PROJECT if set, else the whole database."
+          },
+          "include_archived": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include archived epics and their tasks."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch filter: \"current\" = active branch, \"\" = branch-agnostic only, omit = all."
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "description": "Max results per entity type"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "tracker_session_diff",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": "string",
+            "description": "ISO 8601 datetime — show changes after this time (e.g. \"2026-02-21T15:00:00\")"
+          }
+        },
+        "required": [
+          "since"
+        ]
+      }
+    }
+  ]
+}
