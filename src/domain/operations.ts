@@ -42,6 +42,11 @@ import { subtaskDeleteOperation } from './subtask/subtask-delete.operation.ts';
 import { subtaskReorderOperation } from './subtask/subtask-reorder.operation.ts';
 import { taskBatchUpdateOperation } from './task/task-batch-update.operation.ts';
 import { taskLockDescriptionOperation } from './task/task-lock-description.operation.ts';
+import { templateCreateOperation } from './template/template-create.operation.ts';
+import { templateListOperation } from './template/template-list.operation.ts';
+import { templateUpdateOperation } from './template/template-update.operation.ts';
+import { templateDeleteOperation } from './template/template-delete.operation.ts';
+import { templateApplyOperation } from './template/template-apply.operation.ts';
 import { trackerInitOperation } from './tracker/tracker-init.operation.ts';
 
 /** Ports available to the domain operations (each group takes what it needs). */
@@ -101,5 +106,10 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     commentListOperation(),
     commentDeleteOperation(writers),
     commentRestoreOperation(writers),
+    templateCreateOperation(writers),
+    templateListOperation(),
+    templateUpdateOperation(writers),
+    templateDeleteOperation(writers),
+    templateApplyOperation(writers),
   ];
 }

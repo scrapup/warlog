@@ -15,7 +15,7 @@ import type { TaskCreateInput } from './task-create.operation.ts';
 import { unmetIn } from './task-graph.ts';
 
 /** Where a new task lives. */
-interface Parent {
+export interface Parent {
   /** Project. */
   readonly projectId: string;
   /** Epic, when any. */
@@ -61,6 +61,43 @@ function assertStoryInEpic(epic: IndexedEntity, story: IndexedEntity | undefined
   }
 }
 
+/** Fields of a new task. */
+export interface NewTask {
+  /** Title. */
+  readonly title: string;
+  /** Status. */
+  readonly status: string;
+  /** Priority. */
+  readonly priority: string;
+  /** Tags. */
+  readonly tags: readonly string[];
+  /** Optional fields (code, assignee, estimate, dependencies, …). */
+  readonly extra?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Front matter of a new task.
+ * @param parent - Project, epic and story.
+ * @param task - Task fields.
+ * @returns The fields.
+ */
+export function newTaskFields(parent: Parent, task: NewTask): Record<string, unknown> {
+  return {
+    project_id: parent.projectId,
+    ...(parent.epicId === undefined ? {} : { epic_id: parent.epicId }),
+    ...(parent.storyId === undefined ? {} : { story_id: parent.storyId }),
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    depends_on: [],
+    ...task.extra,
+    description_locked: false,
+    sort_order: 0,
+    subtasks: [],
+    tags: [...task.tags],
+  };
+}
+
 /** Handles `task_create`. */
 export class TaskCreateHandler implements OperationHandler<TaskCreateInput> {
   /** Writer factory. */
@@ -88,21 +125,8 @@ export class TaskCreateHandler implements OperationHandler<TaskCreateInput> {
     const dependsOn = cleanDependencies(id, input.depends_on ?? []);
     const unmet = unmetIn(view, dependsOn);
     const decision = decideStatus(input.status, dependsOn.length, unmet.length, false);
-    const fields = {
-      project_id: parent.projectId,
-      ...(parent.epicId === undefined ? {} : { epic_id: parent.epicId }),
-      ...(parent.storyId === undefined ? {} : { story_id: parent.storyId }),
-      title: input.title,
-      status: decision.status,
-      priority: input.priority,
-      ...Object.fromEntries(OPTIONAL_FIELDS.filter((f) => input[f] !== undefined).map((f) => [f, input[f]])),
-      depends_on: dependsOn,
-      ...(unmet.length > 0 ? { blocked_by_deps: unmet } : {}),
-      description_locked: false,
-      sort_order: 0,
-      subtasks: [],
-      tags: input.tags ?? [],
-    };
+    const extra = Object.fromEntries(OPTIONAL_FIELDS.filter((f) => input[f] !== undefined).map((f) => [f, input[f]]));
+    const fields = newTaskFields(parent, { title: input.title, status: decision.status, priority: input.priority, tags: input.tags ?? [], extra: { ...extra, depends_on: dependsOn, ...(unmet.length > 0 ? { blocked_by_deps: unmet } : {}) } });
     const record = await this.writers(context).create(
       { type: 'task', id, scope: 'repo', projectId: parent.projectId },
       fields,
