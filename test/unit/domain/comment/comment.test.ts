@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { join } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
 import { container, failure, task } from '../../../support/tracker-setup.ts';
@@ -10,7 +11,7 @@ describe.each(['lazy', 'live'] as const)('comment operations (%s index)', (mode)
     const t = await task(h, epicId, 'T');
     const c1 = await h.obj('comment_add', { task_id: t['id'], content: 'first', author: 'ana' });
     expect(c1).toMatchObject({ task_id: t['id'], project_id: projectId, author: 'ana', content: 'first', rev: 1 });
-    expect([...h.fs.files.keys()].some((p) => p.endsWith(`/comments/${String(t['id'])}/${String(c1['id'])}.md`))).toBe(true);
+    expect([...h.fs.files.keys()].some((p) => p.endsWith(join('comments', String(t['id']), `${String(c1['id'])}.md`)))).toBe(true);
     h.clock.advance(1000);
     await h.call('comment_add', { task_id: t['id'], content: 'second' });
     expect((await h.rows('comment_list', { task_id: t['id'] })).map((c) => c['content'])).toEqual(['first', 'second']);

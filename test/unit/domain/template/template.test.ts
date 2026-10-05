@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { join } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { substitute } from '../../../../src/domain/template/template-substitution.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
@@ -23,7 +24,7 @@ describe.each(['lazy', 'live'] as const)('template operations (%s index)', (mode
     const h = trackerHarness({ mode });
     const t = await h.obj('template_create', { name: 'rt', description: 'cycle', tasks: [{ title: 'RT-01 {f}' }, { title: 'RT-02', priority: 'high', estimated_hours: 2, tags: ['x'] }] });
     expect(t).toMatchObject({ name: 'rt', description: 'cycle', tasks: [{ title: 'RT-01 {f}', priority: 'medium' }, { title: 'RT-02', priority: 'high' }] });
-    expect([...h.fs.files.keys()].some((p) => p.startsWith(`${h.roots.global}/templates/`))).toBe(true);
+    expect([...h.fs.files.keys()].some((p) => p.startsWith(join(h.roots.global, 'templates')))).toBe(true);
     expect(h.activityRecords().at(-1)).toMatchObject({ entity_type: 'template', summary: "Template 'rt' created with 2 task(s)" });
     expect(isWarlogError(await failure(h.call('template_create', { name: 'rt', tasks: [{ title: 'x' }] })), 'VALIDATION')).toBe(true);
     expect(isWarlogError(await failure(h.call('template_create', { name: 'empty', tasks: [] })), 'VALIDATION')).toBe(true);

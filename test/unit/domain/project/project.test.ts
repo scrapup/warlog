@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import { join } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
 
@@ -22,7 +23,7 @@ describe.each(['lazy', 'live'] as const)('project operations (%s index)', (mode)
     const project = await h.obj('project_create', { name: 'parity', description: 'Body', tags: ['q4'] });
     expect(project).toMatchObject({ name: 'parity', status: 'active', tags: ['q4'], description: 'Body', rev: 1 });
     expect(typeof project['id']).toBe('string');
-    expect(h.fs.files.get(`${h.roots.repository?.root}/projects/${String(project['id'])}/project.md`)).toContain('name: parity');
+    expect(h.fs.files.get(join(String(h.roots.repository?.root), 'projects', String(project['id']), 'project.md'))).toContain('name: parity');
     expect(h.activityRecords()).toEqual([expect.objectContaining({ action: 'created', entity_type: 'project', entity_id: project['id'], summary: "Project 'parity' created" })]);
   });
 

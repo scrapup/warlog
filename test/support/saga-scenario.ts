@@ -19,6 +19,16 @@ export interface StepResult {
   readonly observation: unknown;
 }
 
+/**
+ * Orders strings by code unit (locale independent).
+ * @param a - First.
+ * @param b - Second.
+ * @returns Comparison.
+ */
+function byCode(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** A JSON object. */
 type Json = Record<string, unknown>;
 
@@ -151,7 +161,7 @@ async function statuses(run: ScenarioRun, names: readonly string[]): Promise<Jso
 async function titles(run: ScenarioRun, extra: Json = {}): Promise<string[]> {
   return rowsOf(await run.tool('task_list', { epic_id: run.id('E'), ...extra }))
     .map((r) => String(r['title']))
-    .sort();
+    .sort(byCode);
 }
 
 /**
@@ -187,7 +197,7 @@ export async function runScenario(call: CallTool): Promise<StepResult[]> {
   await run.tool('task_update', { id: run.id('T2'), status: 'done' });
   run.observe('T2 done releases T3', await statuses(run, ['T2', 'T3']));
   const t3 = (await run.tool('task_get', { id: run.id('T3') })) as Json;
-  run.observe('task_get T3 dependencies', { depends_on: (t3['depends_on'] as Json[]).map((d) => [run.name(d['id']), d['status']]).sort(), dependents: (t3['dependents'] as Json[]).length });
+  run.observe('task_get T3 dependencies', { depends_on: (t3['depends_on'] as Json[]).map((d) => [run.name(d['id']), d['status']]).sort((a, b) => byCode(JSON.stringify(a), JSON.stringify(b))), dependents: (t3['dependents'] as Json[]).length });
   run.observe('task_update cycle', (await run.tool('task_update', { id: run.id('T1'), depends_on: [run.id('T3')] })) === undefined ? 'error' : 'accepted');
   await run.create('task_create T4', 'task_create', { epic_id: run.id('E'), title: 'T4' }, 'T4', ['title', 'status']);
   run.observe('task_delete started task', (await run.tool('task_delete', { id: run.id('T2') })) === undefined ? 'error' : 'accepted');

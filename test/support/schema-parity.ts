@@ -56,7 +56,7 @@ function propertiesOf(node: SchemaNode): Record<string, SchemaNode> {
  */
 function requiredOf(node: SchemaNode): string[] {
   const req = node['required'];
-  return Array.isArray(req) ? req.map(String).sort() : [];
+  return Array.isArray(req) ? req.map(String).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) : [];
 }
 
 /**
