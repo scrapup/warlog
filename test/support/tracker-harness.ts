@@ -3,7 +3,6 @@
  * store. `lazy` reads the disk on every call (command-line profile); `live` keeps one index for the
  * session (MCP profile, without watcher).
  */
-import { sep } from 'node:path';
 import { IndexBuilder } from '../../src/core/index/index-builder.ts';
 import { IndexProvider } from '../../src/core/index/index-provider.ts';
 import type { IndexMode } from '../../src/core/index/index-provider.ts';
@@ -152,7 +151,7 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
     view: async () => (await builder.build(store.roots)).index,
     activityRecords: () =>
       [...store.fs.files.entries()]
-        .filter(([path]) => path.split(sep).join('/').includes('/activity/') && path.endsWith('.jsonl'))
+        .filter(([path]) => path.includes('/activity/') && path.endsWith('.jsonl'))
         .flatMap(([, content]) => content.trim().split('\n').filter((l) => l !== ''))
         .map((line) => JSON.parse(line) as ActivityRecord),
     deps: () => deps,

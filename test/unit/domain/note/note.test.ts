@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import { join } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { excerpt, matchesAll, tokensOf } from '../../../../src/domain/shared/text-search.ts';
+import { norm } from '../../../support/fakes/path-map.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
 import { container, failure, task } from '../../../support/tracker-setup.ts';
 
@@ -27,7 +28,7 @@ describe.each(['lazy', 'live'] as const)('note operations (%s index)', (mode) =>
     const t = await task(h, epicId, 'T');
     const n1 = await h.obj('note_save', { title: 'Decision', content: 'Use trunk', note_type: 'decision', related_entity_type: 'project', related_entity_id: projectId });
     expect(n1).toMatchObject({ project_id: projectId, note_type: 'decision', content: 'Use trunk' });
-    expect([...h.fs.files.keys()].some((p) => p.endsWith(join('projects', projectId, 'notes', `${String(n1['id'])}.md`)))).toBe(true);
+    expect([...h.fs.files.keys()].some((p) => p.endsWith(norm(join('projects', projectId, 'notes', `${String(n1['id'])}.md`))))).toBe(true);
     const n2 = await h.obj('note_save', { title: 'Loose', content: 'General thought' });
     expect(n2).toMatchObject({ note_type: 'general' });
     expect(n2).not.toHaveProperty('project_id');
