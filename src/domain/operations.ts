@@ -47,7 +47,12 @@ import { templateListOperation } from './template/template-list.operation.ts';
 import { templateUpdateOperation } from './template/template-update.operation.ts';
 import { templateDeleteOperation } from './template/template-delete.operation.ts';
 import { templateApplyOperation } from './template/template-apply.operation.ts';
+import { activityLogOperation } from './tracker/activity-log.operation.ts';
+import { trackerDashboardOperation } from './tracker/tracker-dashboard.operation.ts';
 import { trackerInitOperation } from './tracker/tracker-init.operation.ts';
+import { trackerNextOperation } from './tracker/tracker-next.operation.ts';
+import { trackerSearchOperation } from './tracker/tracker-search.operation.ts';
+import { trackerSessionDiffOperation } from './tracker/tracker-session-diff.operation.ts';
 
 /** Ports available to the domain operations (each group takes what it needs). */
 export interface DomainDeps {
@@ -72,6 +77,11 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
   return [
     doctorOperation(deps.logger),
     trackerInitOperation(writers),
+    trackerDashboardOperation(deps.fs),
+    trackerNextOperation(),
+    trackerSearchOperation(),
+    trackerSessionDiffOperation(deps.fs),
+    activityLogOperation(deps.fs),
     projectCreateOperation(writers),
     projectListOperation(),
     projectUpdateOperation(writers),
