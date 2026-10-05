@@ -149,6 +149,12 @@ export interface StoreView {
    */
   list(type: EntityType, projectId?: string): IndexedEntity[];
   /**
+   * Lists every entity of a type, whatever its project.
+   * @param type - Entity type.
+   * @returns The entities, ordered by id.
+   */
+  ofType(type: EntityType): IndexedEntity[];
+  /**
    * Lists the entities whose parent field points to an entity.
    * @param parentId - Parent id.
    * @returns The children, ordered by id.
@@ -195,4 +201,20 @@ export interface IndexSource {
    * @throws {WarlogError} `NO_REPO_CONTEXT` / `VALIDATION` for an invalid reference.
    */
   entity(ref: EntityRef): Promise<IndexedEntity | undefined>;
+  /**
+   * Finds an entity by type and id when its location is unknown (e.g. a task id without its
+   * project); point sources probe the candidate files only.
+   * @param type - Entity type.
+   * @param id - Entity id.
+   * @returns The entity, or `undefined` when absent, excluded or of another type.
+   * @throws {WarlogError} `NO_REPO_CONTEXT` / `VALIDATION` for an invalid id.
+   */
+  lookup(type: EntityType, id: string): Promise<IndexedEntity | undefined>;
+  /**
+   * Applies a file the caller has just written to the view, so later reads see the change
+   * without waiting for the watcher (read-your-writes).
+   * @param path - Absolute path written.
+   * @returns When applied.
+   */
+  refresh(path: string): Promise<void>;
 }
