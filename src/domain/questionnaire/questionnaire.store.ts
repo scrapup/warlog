@@ -9,6 +9,7 @@ import type { OperationContext } from '../../core/mediator/operation-context.ts'
 import type { FileSystem } from '../../core/ports/file-system.port.ts';
 import type { EntityRecord, EntityRef } from '../../core/storage/entity-ref.ts';
 import type { EntityStore, EntityStoreFactory } from '../../core/storage/entity-store.ts';
+import { compareCodeUnits } from '../../core/security/compare.ts';
 import { isSlug } from '../../core/security/identifiers.ts';
 import { AAR_QUESTIONS, AAR_SLUG, AAR_TITLE, AAR_VERSION } from './builtin/aar.questionnaire.ts';
 import { QUESTION } from './question-type-registry.ts';
@@ -164,7 +165,7 @@ export class QuestionnaireStore {
     return (await this.fs.readDir(dir))
       .filter((n) => n.endsWith('.md') && isSlug(n.slice(0, -3)))
       .map((n) => n.slice(0, -3))
-      .sort();
+      .sort(compareCodeUnits);
   }
 
   /**
