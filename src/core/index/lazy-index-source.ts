@@ -19,7 +19,7 @@ import type { StoreIndex } from './store-index.ts';
 const SCOPE_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['project', 'template', 'memory']);
 
 /** Types found by probing each project directory (`projects/<id>/…`). */
-const PROJECT_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['epic', 'story', 'task', 'note']);
+const PROJECT_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['epic', 'story', 'task', 'note', 'response']);
 
 /** Collaborators of {@link LazyIndexSource}. */
 export interface LazyIndexSourceDeps {

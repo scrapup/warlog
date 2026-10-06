@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { execFileSync } from 'node:child_process';
 import { productOperations } from '../../src/domain/operations.ts';
+import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import type { IsolatedEnv } from '../support/isolated-env.ts';
 import { connectMcp, resultText } from '../support/mcp-client.ts';
@@ -69,6 +71,35 @@ describe('warlog mcp from the packed tarball', () => {
     expect(await call('var_set', { name: 'forge.parallel_executors', value: true, scope: 'global' })).toContain('rev: 1');
     expect(await call('var_get', { name: 'forge.parallel_executors' })).toBe('true');
     expect(await call('var_get', { name: 'forge.parallel_executors', format: 'yaml' })).toContain('scope: global');
+  }, 60_000);
+
+  it('[WL-29] [WL-31] [WL-32] [WL-33] runs an After-Action Review: define, respond, promote, recall', async () => {
+    const repoEnv = isolatedEnv();
+    execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: repoEnv.cwd });
+    const repoSession = await connectMcp([installed?.bin ?? '', 'mcp'], { cwd: repoEnv.cwd, env: repoEnv.env, timeoutMs: 20_000 });
+    const call = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      const result = await repoSession.client.callTool({ name, arguments: { ...args, format: 'json' } });
+      expect([name, result.isError ?? false, resultText(result).slice(0, 200)]).toEqual([name, false, resultText(result).slice(0, 200)]);
+      return JSON.parse(resultText(result)) as Record<string, unknown>;
+    };
+    expect(await call('questionnaire_get', { slug: 'aar' })).toMatchObject({ slug: 'aar', version: 1, builtin: true });
+    const project = String((await call('project_create', { name: 'review' }))['id']);
+    const bad = await repoSession.client.callTool({ name: 'response_create', arguments: { questionnaire: 'aar', subject_id: project, answers: { outcome: 'great' } } });
+    expect(bad.isError).toBe(true);
+    expect(resultText(bad)).toContain('VALIDATION');
+    expect(resultText(bad)).toContain('answers.expected');
+    const response = await call('response_create', {
+      questionnaire: 'aar',
+      subject_id: project,
+      answers: { outcome: 'failure', trigger: 'release', expected: 'green', happened: 'red', why_difference: 'flaky test', improve: ['quarantine flaky tests'] },
+    });
+    expect(response).toMatchObject({ questionnaire: 'aar', subject: { type: 'project', id: project } });
+    const promoted = await call('response_promote', { response_id: response['id'], question_id: 'improve', item_index: 0, scope: 'global' });
+    expect(promoted['memory']).toMatchObject({ kind: 'guardrail', title: 'quarantine flaky tests', links: [{ rel: 'derived_from', target: response['id'] }] });
+    expect(await call('memory_recall', { query: 'quarantine flaky' })).toMatchObject({ count: 1 });
+    expect(await call('response_list', { questionnaire: 'aar' })).toMatchObject({ rows: [{ id: response['id'], answered: 6 }] });
+    await repoSession.close();
+    repoEnv.dispose();
   }, 60_000);
 
   it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', async () => {

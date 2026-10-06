@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import { packAndInstall } from '../support/packed-package.ts';
@@ -164,6 +165,38 @@ describe('warlog links and trace from the packed tarball', () => {
       const bad = run(['link', 'add', '--id', taskId, '--rel', 'relates', '--target', 'nonsense']);
       expect(bad.status).toBe(3);
       expect(bad.stderr).toContain('target');
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+});
+
+describe('warlog After-Action Review from the packed tarball', () => {
+  it('[WL-29] [WL-31] [WL-32] [WL-33] answers the built-in aar from a file and promotes a lesson', () => {
+    const iso = isolatedEnv();
+    try {
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      const json = (args: string[]): Record<string, unknown> => {
+        const result = run([...args, '--format', 'json']);
+        expect([args.join(' '), result.status, result.stderr]).toEqual([args.join(' '), 0, '']);
+        return JSON.parse(result.stdout) as Record<string, unknown>;
+      };
+      expect(run(['questionnaire', 'get', 'aar']).stdout).toContain('title: After-Action Review');
+      expect(run(['questionnaire', 'list']).stdout).toContain('aar');
+      const project = String(json(['project', 'create', '--name', 'p'])['id']);
+      const file = join(iso.cwd, 'answers.yaml');
+      writeFileSync(file, `questionnaire: aar\nsubject_id: ${project}\nanswers:\n  outcome: partial\n  trigger: milestone\n  expected: one PR\n  happened: three PRs\n  why_difference: stacked reviews\n  improve:\n    - smaller stories\n`);
+      const invalid = run(['response', 'create', '--questionnaire', 'aar', '--subject-id', project, '--json-input', JSON.stringify({ answers: { outcome: 'nope' } })]);
+      expect(invalid.status).toBe(3);
+      expect(invalid.stderr).toContain('answers.expected');
+      const response = json(['response', 'create', '--file', file]);
+      expect(response).toMatchObject({ questionnaire: 'aar', subject: { type: 'project', id: project } });
+      const promoted = json(['response', 'promote', '--response-id', String(response['id']), '--question-id', 'improve', '--item-index', '0']);
+      expect(promoted['memory']).toMatchObject({ kind: 'guardrail', title: 'smaller stories' });
+      expect(json(['response', 'get', String(response['id'])])).toMatchObject({ answers: { outcome: 'partial' } });
+      expect(run(['memory', 'recall', '--query', 'smaller stories', '--format', 'json']).stdout).toContain('"count": 1');
+      expect(run(['response', 'get', '01J00000000000000000000099']).status).toBe(2);
     } finally {
       iso.dispose();
     }
