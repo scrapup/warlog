@@ -39,6 +39,14 @@ import { traceOperation } from './link/trace.operation.ts';
 import { externalLinkOperation } from './external/external-link.operation.ts';
 import { externalUnlinkOperation } from './external/external-unlink.operation.ts';
 import { findByExternalOperation } from './external/find-by-external.operation.ts';
+import { questionnaireDefineOperation } from './questionnaire/questionnaire-define.operation.ts';
+import { questionnaireGetOperation } from './questionnaire/questionnaire-get.operation.ts';
+import { questionnaireListOperation } from './questionnaire/questionnaire-list.operation.ts';
+import { questionnaireStoreFactory } from './questionnaire/questionnaire.store.ts';
+import { responseCreateOperation } from './response/response-create.operation.ts';
+import { responseGetOperation } from './response/response-get.operation.ts';
+import { responseListOperation } from './response/response-list.operation.ts';
+import { responsePromoteOperation } from './response/response-promote.operation.ts';
 import { projectCreateOperation } from './project/project-create.operation.ts';
 import { projectListOperation } from './project/project-list.operation.ts';
 import { projectUpdateOperation } from './project/project-update.operation.ts';
@@ -164,6 +172,25 @@ function workOperations(writers: WriterFactory): OperationDefinition[] {
 }
 
 /**
+ * Questionnaire and response operations.
+ * @param deps - Domain collaborators.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function reviewOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
+  const stores = questionnaireStoreFactory(deps.fs, deps.entities);
+  return [
+    questionnaireDefineOperation(writers, stores),
+    questionnaireGetOperation(stores),
+    questionnaireListOperation(stores),
+    responseCreateOperation(writers, stores),
+    responseGetOperation(),
+    responseListOperation(),
+    responsePromoteOperation(writers),
+  ];
+}
+
+/**
  * Variable and memory operations.
  * @param deps - Domain collaborators.
  * @param writers - Writer factory.
@@ -204,5 +231,5 @@ function knowledgeOperations(deps: DomainDeps, writers: WriterFactory): Operatio
  */
 export function productOperations(deps: DomainDeps): OperationDefinition[] {
   const writers = writerFactory(deps.entities);
-  return [doctorOperation(deps.logger), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers)];
+  return [doctorOperation(deps.logger), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers), ...reviewOperations(deps, writers)];
 }

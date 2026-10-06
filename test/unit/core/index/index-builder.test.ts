@@ -215,6 +215,25 @@ describe('IndexBuilder.reload', () => {
     expect(index.excluded.invalidFiles()).toEqual([]);
   });
 
+  it('[WL-06] a directory reload never shows a reader a half-empty view', async () => {
+    const fs = store();
+    const builder = new IndexBuilder({ fs, clock: new FixedClock() });
+    const { index } = await builder.build(ROOTS);
+    const before = index.list('task', P).map((e) => e.id);
+    expect(before.length).toBeGreaterThan(0);
+    const seen: string[][] = [];
+    const reload = builder.reload(index, ROOTS, repo('projects', P));
+    const sampler = (async () => {
+      for (let i = 0; i < 20; i += 1) {
+        seen.push(index.list('task', P).map((e) => e.id));
+        await Promise.resolve();
+      }
+    })();
+    await Promise.all([reload, sampler]);
+    expect(seen.every((ids) => ids.length === before.length)).toBe(true);
+    expect(index.list('task', P).map((e) => e.id)).toEqual(before);
+  });
+
   it('[WL-06] forgets every file of a deleted directory', async () => {
     const fs = store();
     const builder = new IndexBuilder({ fs, clock: new FixedClock() });

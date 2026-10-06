@@ -59,7 +59,12 @@ live index does not watch `activity/`; the context carries `runtime` (OS, Node m
 targets without regular expressions, `links_of` both ways, `trace` as a breadth-first walk over
 links, hierarchy and external keys with a visited set and a 2 000-node cap) and `src/domain/external`
 (tracker references on epics, stories and tasks; no network access anywhere, proven by a test over
-`src/**`). Test doubles live in `test/support/fakes`; fixture
+`src/**`). Questionnaires and AAR (US-101): `src/domain/questionnaire` (ten question types, each with its
+definition schema, answer check and rendering, registered in `question-type-registry.ts`; the simple
+`when` condition; `QuestionnaireStore` reads straight from disk because a slug may exist at both
+scopes and the index keys questionnaires by scope; the built-in `aar` is a code constant until first
+used) and `src/domain/response` (validated answers with a copy of the questions, promotion to a
+memory). warlog never decides when a review is opened (WL-34). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

@@ -113,6 +113,18 @@ function entityProblem(data: Readonly<Record<string, unknown>>, segments: readon
 }
 
 /**
+ * Key of an entity in the view: its id, except for questionnaires, whose slug may exist at both
+ * scopes (the repository overrides the global one, WL-29), so the scope is part of the key.
+ * @param id - Entity id (slug for questionnaires).
+ * @param type - Entity type.
+ * @param file - Scanned file.
+ * @returns The key.
+ */
+function indexKey(id: string, type: unknown, file: ScannedFile): string {
+  return type === 'questionnaire' ? `${file.root === 'global' ? 'global' : 'repo'}:${id}` : id;
+}
+
+/**
  * Reads an entity file.
  * @param file - Scanned file.
  * @param text - Content.
@@ -132,7 +144,7 @@ function readEntity(file: ScannedFile, text: string): ReadOutcome {
   }
   const project = doc.data['project_id'];
   const entity: IndexedEntity = {
-    id: String(doc.data['id']),
+    id: indexKey(String(doc.data['id']), doc.data['type'], file),
     type: doc.data['type'] as EntityType,
     scope: file.root === 'global' ? 'global' : 'repo',
     projectId: pathProject(segments) ?? (typeof project === 'string' ? project : undefined),
