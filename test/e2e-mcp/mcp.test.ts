@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { productOperations } from '../../src/domain/operations.ts';
 import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
@@ -99,6 +101,30 @@ describe('warlog mcp from the packed tarball', () => {
     expect(await call('memory_recall', { query: 'quarantine flaky' })).toMatchObject({ count: 1 });
     expect(await call('response_list', { questionnaire: 'aar' })).toMatchObject({ rows: [{ id: response['id'], answered: 6 }] });
     await repoSession.close();
+    repoEnv.dispose();
+  }, 60_000);
+
+  it('[WL-57] [WL-73] registers a repository file by reference and reports it as changed after an edit', async () => {
+    const repoEnv = isolatedEnv();
+    execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: repoEnv.cwd });
+    mkdirSync(join(repoEnv.cwd, 'docs', 'specs', 'core', 'ref'), { recursive: true });
+    const file = join(repoEnv.cwd, 'docs', 'specs', 'core', 'ref', 'design.md');
+    writeFileSync(file, '# D\n\n## One\n');
+    const session2 = await connectMcp([installed?.bin ?? '', 'mcp'], { cwd: repoEnv.cwd, env: repoEnv.env, timeoutMs: 20_000 });
+    const call = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      const result = await session2.client.callTool({ name, arguments: { ...args, format: 'json' } });
+      expect([name, result.isError ?? false, resultText(result).slice(0, 200)]).toEqual([name, false, resultText(result).slice(0, 200)]);
+      return JSON.parse(resultText(result)) as Record<string, unknown>;
+    };
+    const imported = await call('doc_import', { path: 'docs/specs/core/ref/design.md', mode: 'reference' });
+    const id = String((imported['documents'] as { id: string }[])[0]?.id);
+    expect(await call('doc_get', { id })).not.toHaveProperty('changed_since_registration');
+    writeFileSync(file, '# D\n\n## One\n\n## Two\n');
+    expect(await call('doc_get', { id })).toMatchObject({ changed_since_registration: true });
+    expect(await call('doctor', {})).toMatchObject({ document_references: [] });
+    const tools = (await session2.client.listTools()).tools.map((t) => t.name);
+    expect(tools).toEqual(expect.arrayContaining(['doc_import', 'doc_get', 'doc_toc', 'doc_search', 'doc_list', 'doc_history', 'doc_versions', 'doc_export', 'doc_epic_list', 'opportunity_list']));
+    await session2.close();
     repoEnv.dispose();
   }, 60_000);
 

@@ -62,6 +62,8 @@ warlog playbook test                   # how to run/test here, commands that wor
 warlog patterns-for src/a.ts           # patterns that apply to a file
 warlog trace <id>                      # use case ↔ story ↔ task ↔ test ↔ commit ↔ external key
 warlog questionnaire get aar           # built-in After-Action Review; response create / promote
+warlog doc import docs/specs/core     # register a file or opportunity folder by path; nothing passes through your context
+warlog doc get <id> --section <anchor> # read one section; large documents come in pages
 warlog mcp                             # start the MCP server over stdio
 ```
 

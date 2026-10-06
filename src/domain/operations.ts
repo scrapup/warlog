@@ -7,6 +7,12 @@ import type { FileSystem } from '../core/ports/file-system.port.ts';
 import type { Logger } from '../core/ports/logger.port.ts';
 import type { EntityStoreFactory } from '../core/storage/entity-store.ts';
 import type { VarRepositoryFactory } from './var/var.repository.ts';
+import { referenceChecker } from './doc/reference-checker.ts';
+import type { DocRepositoryFactory } from './doc/doc.repository.ts';
+import { docExportOperation } from './doc/doc-export.operation.ts';
+import { docImportOperation } from './doc/doc-import.operation.ts';
+import { docEpicListOperation, docHistoryOperation, docListOperation, docVersionsOperation, opportunityListOperation } from './doc/doc-list.operations.ts';
+import { docGetOperation, docSearchOperation, docTocOperation } from './doc/doc-read.operations.ts';
 import { commentAddOperation } from './comment/comment-add.operation.ts';
 import { commentListOperation } from './comment/comment-list.operation.ts';
 import { commentDeleteOperation } from './comment/comment-delete.operation.ts';
@@ -98,6 +104,8 @@ export interface DomainDeps {
   readonly entities: EntityStoreFactory;
   /** Opens the variable repository of a call's roots. */
   readonly vars: VarRepositoryFactory;
+  /** Opens the document repository of a call's roots. */
+  readonly docs: DocRepositoryFactory;
 }
 
 /** Builds the registry content from the domain collaborators. */
@@ -225,11 +233,31 @@ function knowledgeOperations(deps: DomainDeps, writers: WriterFactory): Operatio
 }
 
 /**
+ * Document registry operations.
+ * @param deps - Domain collaborators.
+ * @returns The definitions.
+ */
+function documentOperations(deps: DomainDeps): OperationDefinition[] {
+  return [
+    docImportOperation(deps.fs, deps.docs, deps.vars),
+    docGetOperation(deps.fs, deps.docs),
+    docTocOperation(deps.fs, deps.docs),
+    docSearchOperation(deps.fs, deps.docs),
+    docListOperation(deps.docs),
+    docHistoryOperation(deps.docs),
+    docVersionsOperation(deps.fs, deps.docs),
+    docExportOperation(deps.fs, deps.docs, deps.vars),
+    docEpicListOperation(deps.docs),
+    opportunityListOperation(deps.docs),
+  ];
+}
+
+/**
  * Builds the product operations.
  * @param deps - Domain collaborators.
  * @returns The registry content.
  */
 export function productOperations(deps: DomainDeps): OperationDefinition[] {
   const writers = writerFactory(deps.entities);
-  return [doctorOperation(deps.logger), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers), ...reviewOperations(deps, writers)];
+  return [doctorOperation(deps.logger, referenceChecker(deps.fs, deps.docs)), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers), ...reviewOperations(deps, writers), ...documentOperations(deps)];
 }

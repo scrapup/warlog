@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
@@ -197,6 +197,41 @@ describe('warlog After-Action Review from the packed tarball', () => {
       expect(json(['response', 'get', String(response['id'])])).toMatchObject({ answers: { outcome: 'partial' } });
       expect(run(['memory', 'recall', '--query', 'smaller stories', '--format', 'json']).stdout).toContain('"count": 1');
       expect(run(['response', 'get', '01J00000000000000000000099']).status).toBe(2);
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+});
+
+describe('warlog document registry from the packed tarball', () => {
+  it('[WL-60] [WL-61] [WL-66] [WL-68] registers a folder by path, reads one section, searches and exports it', () => {
+    const iso = isolatedEnv();
+    try {
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      const json = (args: string[]): Record<string, unknown> => {
+        const result = run([...args, '--format', 'json']);
+        expect([args.join(' '), result.status, result.stderr]).toEqual([args.join(' '), 0, '']);
+        return JSON.parse(result.stdout) as Record<string, unknown>;
+      };
+      const folder = join(iso.cwd, 'docs', 'specs', 'core', 'alpha');
+      mkdirSync(join(folder, 'diagrams'), { recursive: true });
+      writeFileSync(join(folder, 'design.md'), '# Design\n\n## Flow\n\n![flow](diagrams/flow.png)\n\nRollback is manual.\n\n## Notes\n\nNothing.\n');
+      writeFileSync(join(folder, 'diagrams', 'flow.png'), 'PNG');
+      const imported = json(['doc', 'import', 'docs/specs/core/alpha']);
+      expect(imported).toMatchObject({ epic: 'core', opportunity: 'alpha', documents: [{ kind: 'design', assets: 1 }] });
+      expect(JSON.stringify(imported)).not.toContain('Rollback');
+      const id = String((imported['documents'] as { id: string }[])[0]?.id);
+      expect(run(['doc', 'toc', id]).stdout).toContain('flow');
+      expect(run(['doc', 'get', id, '--section', 'notes']).stdout).toContain('Nothing.');
+      expect(run(['doc', 'search', '--id', id, '--query', 'rollback']).stdout).toContain('flow');
+      expect(run(['doc', 'list']).stdout).toContain('design');
+      expect(run(['doc', 'get', '01J00000000000000000000099']).status).toBe(2);
+      expect(run(['doc', 'import', '../outside.md']).status).not.toBe(0);
+      const exported = json(['doc', 'export', '--id', id, '--path', 'out']);
+      expect(exported['assets']).toBe(1);
+      expect(readFileSync(join(iso.cwd, 'out', 'design.md'), 'utf8')).toContain('![flow](diagrams/flow.png)');
+      expect(existsSync(join(iso.cwd, 'out', 'diagrams', 'flow.png'))).toBe(true);
     } finally {
       iso.dispose();
     }

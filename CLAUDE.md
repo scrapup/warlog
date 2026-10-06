@@ -64,7 +64,17 @@ definition schema, answer check and rendering, registered in `question-type-regi
 `when` condition; `QuestionnaireStore` reads straight from disk because a slug may exist at both
 scopes and the index keys questionnaires by scope; the built-in `aar` is a code constant until first
 used) and `src/domain/response` (validated answers with a copy of the questions, promotion to a
-memory). warlog never decides when a review is opened (WL-34). Test doubles live in `test/support/fakes`; fixture
+memory). warlog never decides when a review is opened (WL-34). Document registry (US-102): `src/domain/doc` —
+epic → opportunity → document folders under `<area>/docs` (area `repo` or `global`); `doc_import`
+plans everything first (`import/document-planner.ts`: size limits, secrets, SDD structure, image
+links through `asset-collector.ts` with real-path containment) and writes only a validated plan
+(`import/document-writer.ts`: assets, Markdown, section index, `.meta` last so a half-written import
+is never listed; `version-snapshotter.ts` keeps replaced content); `import-path-policy.ts` confines
+reads and exports to the repository working tree plus the global variable `docs.import.allowed_roots`;
+`markdown-scanner.ts`, `section-index.ts` and `page-splitter.ts` are linear scans without regular
+expressions; reference mode stores only metadata and a SHA-256, read live by `doc-reader.ts`;
+`reference-checker.ts` feeds the `doctor` section `document_references`. The registry sits outside
+the entity index (it skips `docs/`), so listings read the folders directly. Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

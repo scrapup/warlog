@@ -51,14 +51,22 @@ export interface FileSystem {
    */
   readFile(path: string): Promise<string>;
   /**
-   * Writes a UTF-8 file atomically: temporary file in the same directory, `fsync`, `rename`
-   * (WL-41). Parent directories are created when missing.
+   * Reads a file as bytes (images and diagram sources).
    * @param path - File path.
-   * @param data - Content.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` when the file is larger than the limit.
+   * @throws {WarlogError} `NOT_FOUND` when the file does not exist.
+   */
+  readBinary(path: string, maxBytes: number): Promise<Uint8Array | undefined>;
+  /**
+   * Writes a file atomically: temporary file in the same directory, `fsync`, `rename`
+   * (WL-41). Parent directories are created when missing. Text is written as UTF-8.
+   * @param path - File path.
+   * @param data - Content (text or bytes).
    * @returns A promise resolved once the file is in place.
    * @throws {WarlogError} `INTERNAL` when the write cannot complete; the previous content stays intact.
    */
-  writeFileAtomic(path: string, data: string): Promise<void>;
+  writeFileAtomic(path: string, data: string | Uint8Array): Promise<void>;
   /**
    * Appends UTF-8 text to a file, creating it (and its parents) when missing.
    * @param path - File path.
