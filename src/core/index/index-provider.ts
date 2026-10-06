@@ -10,12 +10,12 @@ import type { FileSystem } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
 import type { IndexSource, IndexedEntity, StoreView } from '../ports/store-view.port.ts';
 import type { PathGuard } from '../security/path-guard.ts';
-import type { EntityRef } from '../storage/entity-ref.ts';
+import type { EntityRef, EntityType } from '../storage/entity-ref.ts';
 import { EntityPaths } from '../storage/entity-paths.ts';
 import type { StoreRoots } from '../storage/store-roots.ts';
 import { buildFields } from './index-builder.ts';
 import type { IndexBuilder } from './index-builder.ts';
-import { entityFrom, pointOnly } from './index-source.ts';
+import { entityFrom, entityOfType, pointOnly } from './index-source.ts';
 import { LazyIndexSource } from './lazy-index-source.ts';
 import type { StoreIndex } from './store-index.ts';
 
@@ -100,6 +100,8 @@ export class IndexProvider {
         : {
             full: (): Promise<StoreView> => this.ensure(roots),
             entity: async (ref: EntityRef): Promise<IndexedEntity | undefined> => entityFrom(await this.ensure(roots), ref),
+            lookup: async (type: EntityType, id: string): Promise<IndexedEntity | undefined> => entityOfType(await this.ensure(roots), type, id),
+            refresh: async (path: string): Promise<void> => this.deps.builder.reload(await this.ensure(roots), roots, path),
           };
     return load === 'point' ? pointOnly(source, operation) : source;
   }
