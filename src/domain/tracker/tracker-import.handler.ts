@@ -10,6 +10,7 @@ import type { OperationResult } from '../../core/mediator/operation-result.ts';
 import type { EntityType } from '../../core/storage/entity-ref.ts';
 import type { TrackerWriter } from '../shared/tracker-writer.ts';
 import type { WriterFactory } from '../shared/writer-factory.ts';
+import { cycleIssues, duplicateIdIssues } from './import-checks.ts';
 import { planImport } from './import-plan.ts';
 import type { PlannedEntity } from './import-plan.ts';
 import { SAGA_EXPORT } from './saga-export.schema.ts';
@@ -54,7 +55,15 @@ export class TrackerImportHandler implements OperationHandler<TrackerImportInput
     if (!parsed.success) {
       throw new WarlogError('VALIDATION', 'invalid export: nothing was imported', { issues: toIssues(parsed.error).map((i) => ({ ...i, path: `data.${i.path}` })) });
     }
+    const duplicates = duplicateIdIssues(parsed.data);
+    if (duplicates.length > 0) {
+      throw new WarlogError('VALIDATION', 'invalid export: nothing was imported', { issues: duplicates });
+    }
     const plan = planImport(parsed.data, context.ids, context.clock.now().toISOString());
+    const cycles = cycleIssues(plan);
+    if (cycles.length > 0) {
+      throw new WarlogError('VALIDATION', 'invalid export: nothing was imported', { issues: cycles });
+    }
     const writer = this.writers(context);
     const projectId = plan.project.id;
     await writer.create({ type: 'project', id: projectId, scope: 'repo', projectId }, plan.project.fields, plan.project.body, `${plan.project.label} imported`);
