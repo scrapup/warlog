@@ -31,4 +31,20 @@ export class ProcessEnv implements Env {
   cwd(): string {
     return process.cwd();
   }
+
+  /**
+   * Returns the operating system.
+   * @returns `process.platform`.
+   */
+  platform(): string {
+    return process.platform;
+  }
+
+  /**
+   * Returns the Node.js version.
+   * @returns The version without the leading `v`.
+   */
+  nodeVersion(): string {
+    return process.versions.node;
+  }
 }

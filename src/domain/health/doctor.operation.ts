@@ -22,7 +22,7 @@ export function doctorOperation(logger: Logger): OperationDefinition {
     kind: 'query',
     input: DOCTOR_INPUT,
     description:
-      'Report conflict copies, merge-conflicted and invalid files, pending links and stale temp files (document references and memory review are reported as not_checked until available). Never repairs anything.',
+      'Report conflict copies, merge-conflicted and invalid files, pending links, memories not recalled for 90 days and stale temp files (document references are reported as not_checked until available). Never repairs anything.',
     examples: [{}],
     defaultFormat: 'yaml',
     load: 'full',

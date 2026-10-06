@@ -53,6 +53,24 @@ describe('warlog mcp from the packed tarball', () => {
     expect(JSON.stringify(result.content)).toContain('VALIDATION: unknown operation nope');
   }, 30_000);
 
+  it('[WL-16] [WL-18] [WL-20] saves, recalls and records memories, then answers the playbook and patterns_for', async () => {
+    const call = async (name: string, args: Record<string, unknown>): Promise<string> => {
+      const result = await mcp().client.callTool({ name, arguments: args });
+      expect([name, result.isError ?? false]).toEqual([name, false]);
+      return resultText(result);
+    };
+    await call('memory_save', { kind: 'pattern', title: 'ports first', content: 'inject side effects', applies_to: ['src/**/*.ts'] });
+    await call('memory_save', { kind: 'known_issue', title: 'windows path bug', content: 'details', symptom: 'ENOENT', tags: ['win'] });
+    expect(await call('memory_recall', { query: 'windows ENOENT', format: 'json' })).toContain('"count": 1');
+    expect(await call('command_record', { cmd: 'npm run test:unit', outcome: 'ok', purpose: 'test', format: 'json' })).toContain('"status": "works"');
+    const playbook = await call('playbook', { topic: 'test', format: 'json' });
+    expect(JSON.parse(playbook)).toMatchObject({ commands: { works: [{ cmd: 'npm run test:unit', status: 'works' }] } });
+    expect(JSON.parse(await call('patterns_for', { path: 'src/core/a.ts', format: 'json' }))).toMatchObject({ count: 1, patterns: [{ title: 'ports first' }] });
+    expect(await call('var_set', { name: 'forge.parallel_executors', value: true, scope: 'global' })).toContain('rev: 1');
+    expect(await call('var_get', { name: 'forge.parallel_executors' })).toBe('true');
+    expect(await call('var_get', { name: 'forge.parallel_executors', format: 'yaml' })).toContain('scope: global');
+  }, 60_000);
+
   it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', async () => {
     const current = mcp();
     await current.client.callTool({ name: 'nope', arguments: {} });

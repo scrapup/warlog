@@ -113,6 +113,7 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
         clock: store.clock,
         ids,
         machine: store.machine,
+        runtime: { os: 'linux', node: '22' },
         defaultProject: harness.defaultProject,
         currentBranch: async () => harness.branch,
         index: indexes.sourceFor(store.roots, request.load, request.operation),

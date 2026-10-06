@@ -72,6 +72,7 @@ export class StoreContextFactory implements OperationContextFactory {
       clock: this.deps.clock,
       ids: this.deps.ids,
       machine: this.deps.machine,
+      runtime: { os: this.deps.env.platform(), node: (this.deps.env.nodeVersion().split('.')[0] ?? '') },
       defaultProject: project === undefined || project.trim() === '' ? undefined : project,
       currentBranch: () => this.deps.git.currentBranch(cwd),
       index: this.deps.indexes(roots, request),

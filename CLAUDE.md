@@ -51,7 +51,11 @@ real `saga-mcp` by `scripts/capture-saga-fixtures.ts` — never edit them by han
 `vars/<name>.yaml` per scope, strict type checks without coercion, `restricted-schema-validator`
 over `ajv` with a keyword allow-list, `var_get/set/list/delete`); an operation may declare
 `positional` (first CLI argument, same field as its flag) and an object result may carry `raw`
-(printed alone unless a format or fields are requested). Test doubles live in `test/support/fakes`; fixture
+(printed alone unless a format or fields are requested). Memory and playbook (US-99): `src/domain/memory` (kinds with validated fields, literal word
+recall ranked by scope → matches → recency, explicit lifecycle, review candidates) and
+`src/domain/playbook` (`command_record` observations as activity, status derived per environment,
+`issue_resolve`, `playbook`, `patterns_for`); `freshActivity` re-reads the activity files because a
+live index does not watch `activity/`; the context carries `runtime` (OS, Node major). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

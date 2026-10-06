@@ -62,7 +62,7 @@ describe('doctor', () => {
       invalid_files: [{ root: 'repo', path: 'memories/01J00000000000000000000M04.md', reason: 'front_matter' }],
       pending_links: [{ from: M1, rel: 'relates', target: MISSING }],
       document_references: NOT_CHECKED,
-      memories_due_for_review: NOT_CHECKED,
+      memories_due_for_review: [],
       stale_temp_files: [{ root: 'repo', path: `memories/.${M1}.md.tmp-1-old`, age_minutes: 61 }],
     });
     expect(new Map(fs.files)).toEqual(before);

@@ -28,6 +28,7 @@ export class FixtureContextFactory implements OperationContextFactory {
       clock: new FixedClock(),
       ids: this.ids,
       machine: new FixedMachineId(),
+      runtime: { os: 'linux', node: '22' },
       defaultProject: undefined,
       currentBranch: async () => 'main',
       index: request.load === 'point' ? pointOnly(this.index, request.operation) : this.index,
