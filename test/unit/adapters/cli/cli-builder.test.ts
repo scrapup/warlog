@@ -257,3 +257,20 @@ describe('command line: help, version and mcp', () => {
     expect(await run(['mcp'])).toMatchObject({ code: 0, mcpStarted: true });
   });
 });
+
+describe('command line: first argument', () => {
+  const positional: OperationDefinition = { ...fixtureOperation('fixture_echo'), positional: 'text' };
+
+  it('[WL-35] accepts the first input field as an argument, same as its flag', async () => {
+    const asArgument = await run(['fixture', 'echo', 'hello'], () => undefined, [positional]);
+    expect([asArgument.code, asArgument.out]).toEqual([0, 'text: hello\ncount: 1\n']);
+    const asFlag = await run(['fixture', 'echo', '--text', 'hello', '--count', '3'], () => undefined, [positional]);
+    expect(asFlag.out).toBe('text: hello\ncount: 3\n');
+    const both = await run(['fixture', 'echo', 'a', '--text', 'b'], () => undefined, [positional]);
+    expect(both.code).toBe(3);
+    expect(both.err).toContain('text given twice: as an argument and as --text');
+    const none = await run(['fixture', 'echo'], () => undefined, [positional]);
+    expect(none.code).toBe(3);
+    expect(none.err).toContain('text');
+  });
+});

@@ -27,6 +27,8 @@ export interface ObjectResult {
   readonly kind: 'object';
   /** The value. */
   readonly value: Readonly<Record<string, unknown>>;
+  /** Printed raw when the caller asks for no format and no fields (WL-39); the full value stays available with `format` or `fields`. */
+  readonly raw?: string | number | boolean;
 }
 
 /** A scalar value (printed raw by the CLI, WL-39). */

@@ -49,6 +49,7 @@ function checkDefinition(def: OperationDefinition): void {
   if (RESERVED_COMMAND_NAMES.includes(def.group)) problems.push(`group ${def.group} is a reserved command name`);
   const reserved = reservedKeys(def);
   if (reserved.length > 0) problems.push(`fields reuse reserved names: ${reserved.join(', ')}`);
+  if (def.positional !== undefined && !(def.positional in def.input.shape)) problems.push(`positional ${def.positional} is not an input field`);
   def.examples.forEach((example, i) => {
     if (!def.input.strict().safeParse(example).success) problems.push(`example ${i} does not match the input schema`);
   });

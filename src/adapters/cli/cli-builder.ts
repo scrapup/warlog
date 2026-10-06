@@ -12,7 +12,7 @@ import { collectInput, locateIssues } from './cli-input.ts';
 import type { CollectedInput, FlagBinding, InputReader } from './cli-input.ts';
 import { COMMON_OPTIONS } from './common-options.ts';
 import { EXIT_OK, EXIT_VALIDATION, exitCodeFor } from './exit-codes.ts';
-import { fieldSpecs } from './flag-mapper.ts';
+import { fieldSpecs, toFlagName } from './flag-mapper.ts';
 import type { FieldSpec } from './flag-mapper.ts';
 import { renderOperationHelp } from './help-renderer.ts';
 
@@ -127,18 +127,39 @@ function report(io: CliIo, outcome: ExecuteOutcome): number {
  * @param op - Operation command.
  * @param bindings - Field flags.
  * @param opts - Parsed options.
+ * @param positional - First command-line argument, when the command takes one.
  * @returns The exit code.
  */
-async function runOperation(op: OperationCommand, bindings: readonly FlagBinding[], opts: Record<string, unknown>): Promise<number> {
+async function runOperation(op: OperationCommand, bindings: readonly FlagBinding[], opts: Record<string, unknown>, positional: unknown): Promise<number> {
   const { deps, def } = op;
   let input: CollectedInput;
   try {
-    input = await collectInput(bindings, opts, deps.io);
+    input = await collectInput(bindings, withPositional(def, bindings, opts, positional), deps.io);
   } catch (error: unknown) {
     return report(deps.io, toLoggedFailure(deps, def.name, error));
   }
   const outcome = await executeOperation(deps, def.name, input.args, { dryRun: opts['validate'] === true });
   return report(deps.io, outcome.ok ? outcome : { ok: false, error: locateIssues(outcome.error, input) });
+}
+
+/**
+ * Merges the first command-line argument into the options as the flag of the same field.
+ * @param def - Operation.
+ * @param bindings - Field flags.
+ * @param opts - Parsed options.
+ * @param positional - First argument, when the command takes one and it was given.
+ * @returns The options to read the input from.
+ * @throws {WarlogError} `VALIDATION` when the argument and its flag are both given.
+ */
+function withPositional(def: OperationDefinition, bindings: readonly FlagBinding[], opts: Record<string, unknown>, positional: unknown): Record<string, unknown> {
+  const attribute = bindings.find((b) => b.spec.key === def.positional)?.attribute;
+  if (attribute === undefined || typeof positional !== 'string') {
+    return opts;
+  }
+  if (opts[attribute] !== undefined) {
+    throw new WarlogError('VALIDATION', `${def.positional} given twice: as an argument and as --${toFlagName(String(def.positional))}`, { field: def.positional });
+  }
+  return { ...opts, [attribute]: positional };
 }
 
 /**
@@ -150,6 +171,9 @@ function addOperation(parent: Command, op: OperationCommand): void {
   const name = isTopLevel(op.def) ? op.def.group : op.def.action;
   const command = parent.command(name).description(op.def.description).allowExcessArguments(false);
   command.configureHelp({ formatHelp: () => renderOperationHelp(op.def) });
+  if (op.def.positional !== undefined) {
+    command.argument(`[${op.def.positional}]`, `${op.def.positional} (same as --${toFlagName(op.def.positional)})`);
+  }
   const bindings = fieldSpecs(op.def.input)
     .filter((spec) => spec.kind !== 'complex')
     .map((spec) => {
@@ -161,8 +185,8 @@ function addOperation(parent: Command, op: OperationCommand): void {
     const option = new Option(common.flags, common.description);
     command.addOption(common.choices === undefined ? option : option.choices(common.choices));
   }
-  command.action(async () => {
-    op.state.exitCode = await runOperation(op, bindings, command.opts());
+  command.action(async (...actionArgs: unknown[]) => {
+    op.state.exitCode = await runOperation(op, bindings, command.opts(), actionArgs[0]);
   });
 }
 

@@ -47,7 +47,11 @@ project/branch scope, literal token search, result rows); `task/dependency-engin
 block/unblock and cycle rules); `IndexSource.lookup`/`refresh` and `StoreView.ofType`;
 `core/index/activity-reader.ts` (raw activity for `activity_log`, session diff, dashboard). The saga
 parity contract (`test/integration/saga-parity.test.ts`) compares against fixtures captured from a
-real `saga-mcp` by `scripts/capture-saga-fixtures.ts` — never edit them by hand. Test doubles live in `test/support/fakes`; fixture
+real `saga-mcp` by `scripts/capture-saga-fixtures.ts` — never edit them by hand. Variables (US-98): `src/domain/var` (`VarRepository` point reads/atomic writes of
+`vars/<name>.yaml` per scope, strict type checks without coercion, `restricted-schema-validator`
+over `ajv` with a keyword allow-list, `var_get/set/list/delete`); an operation may declare
+`positional` (first CLI argument, same field as its flag) and an object result may carry `raw`
+(printed alone unless a format or fields are requested). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

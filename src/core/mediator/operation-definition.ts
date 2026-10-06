@@ -48,6 +48,8 @@ export interface OperationDefinition<S extends z.ZodObject = z.ZodObject> {
   readonly defaultFormat: DefaultFormat;
   /** Index access (see {@link LoadMode}). */
   readonly load: LoadMode;
+  /** Input field the command line also accepts as its first argument (`warlog var get <name>`); the flag keeps working. */
+  readonly positional?: string;
   /** Handler. */
   readonly handler: OperationHandler<z.infer<S>>;
 }
