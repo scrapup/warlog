@@ -60,6 +60,7 @@ warlog var get forge.parallel_executors  # scalar printed raw; project > reposit
 warlog memory recall --query "windows paths"   # lessons first: repository scope, matches, recency
 warlog playbook test                   # how to run/test here, commands that work or fail
 warlog patterns-for src/a.ts           # patterns that apply to a file
+warlog trace <id>                      # use case ↔ story ↔ task ↔ test ↔ commit ↔ external key
 warlog mcp                             # start the MCP server over stdio
 ```
 

@@ -32,6 +32,13 @@ import { commandRecordOperation } from './playbook/command-record.operation.ts';
 import { issueResolveOperation } from './playbook/issue-resolve.operation.ts';
 import { patternsForOperation } from './playbook/patterns-for.operation.ts';
 import { playbookOperation } from './playbook/playbook.operation.ts';
+import { linkAddOperation } from './link/link-add.operation.ts';
+import { linkRemoveOperation } from './link/link-remove.operation.ts';
+import { linksOfOperation } from './link/links-of.operation.ts';
+import { traceOperation } from './link/trace.operation.ts';
+import { externalLinkOperation } from './external/external-link.operation.ts';
+import { externalUnlinkOperation } from './external/external-unlink.operation.ts';
+import { findByExternalOperation } from './external/find-by-external.operation.ts';
 import { projectCreateOperation } from './project/project-create.operation.ts';
 import { projectListOperation } from './project/project-list.operation.ts';
 import { projectUpdateOperation } from './project/project-update.operation.ts';
@@ -180,6 +187,13 @@ function knowledgeOperations(deps: DomainDeps, writers: WriterFactory): Operatio
     issueResolveOperation(writers),
     playbookOperation(deps.fs),
     patternsForOperation(),
+    linkAddOperation(writers),
+    linkRemoveOperation(writers),
+    linksOfOperation(),
+    traceOperation(),
+    externalLinkOperation(writers),
+    externalUnlinkOperation(writers),
+    findByExternalOperation(),
   ];
 }
 
