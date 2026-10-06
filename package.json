@@ -30,7 +30,7 @@
     "test:unit": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects unit",
     "test:integration": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects integration",
     "test:e2e": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects e2e-cli e2e-mcp",
-    "bench": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects bench --passWithNoTests",
+    "bench": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --selectProjects bench --passWithNoTests --runInBand",
     "rules:coverage": "node scripts/rules-coverage.ts",
     "verify:local": "node scripts/verify-local.ts"
   },
