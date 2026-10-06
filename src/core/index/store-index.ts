@@ -128,10 +128,11 @@ export class StoreIndex implements StoreView {
    * @returns The entity, when present.
    */
   byExternal(system: string, key: string): IndexedEntity | undefined {
-    return [...this.entities.values()].find((e) => {
+    const holders = [...this.entities.values()].filter((e) => {
       const external = e.record.data['external'];
       return Array.isArray(external) && external.some((x: unknown) => isExternal(x, system, key));
     });
+    return holders.find((e) => !e.deleted) ?? holders[0];
   }
 
   /**
