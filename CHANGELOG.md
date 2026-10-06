@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1](https://github.com/scrapup/warlog/compare/v1.1.0...v1.1.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **core:** multi-spec review findings, batches A and B ([#20](https://github.com/scrapup/warlog/issues/20)) ([06bf88d](https://github.com/scrapup/warlog/commit/06bf88dcb4ee6d59400659f15d9257d6d1051c33))
+* **doc:** close the findings of the multi-spec review of the document registry ([829e874](https://github.com/scrapup/warlog/commit/829e874f0b6d0d90eef133e9cff599b372ed7ff4))
+* **doc:** multi-spec review findings, batch D (document registry) ([#21](https://github.com/scrapup/warlog/issues/21)) ([829e874](https://github.com/scrapup/warlog/commit/829e874f0b6d0d90eef133e9cff599b372ed7ff4))
+
 ## [1.1.0](https://github.com/scrapup/warlog/compare/v1.0.0...v1.1.0) (2026-10-06)
 
 
