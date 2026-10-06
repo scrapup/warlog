@@ -3,6 +3,8 @@
  * store. `lazy` reads the disk on every call (command-line profile); `live` keeps one index for the
  * session (MCP profile, without watcher).
  */
+import { docRepositoryFactory } from '../../src/domain/doc/doc.repository.ts';
+import { resolve } from 'node:path';
 import { IndexBuilder } from '../../src/core/index/index-builder.ts';
 import { IndexProvider } from '../../src/core/index/index-provider.ts';
 import type { IndexMode } from '../../src/core/index/index-provider.ts';
@@ -41,6 +43,8 @@ export interface TrackerHarness extends MemoryStore {
   defaultProject: string | undefined;
   /** Active git branch of the next calls. */
   branch: string | undefined;
+  /** Top level of the working tree of the next calls. */
+  topLevel: string | undefined;
   /** Contexts created so far. */
   readonly contexts: OperationContext[];
   /** Warnings returned so far. */
@@ -96,12 +100,13 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
   const guard = new PathGuard(store.fs);
   const builder = new IndexBuilder({ fs: store.fs, clock: store.clock });
   const indexes = new IndexProvider({ fs: store.fs, builder, guard, logger: store.logger, mode: options.mode ?? 'lazy' });
-  const deps: DomainDeps = { fs: store.fs, logger: store.logger, entities: entityStoreFactory(store.fs, guard), vars: varRepositoryFactory(store.fs, guard) };
+  const deps: DomainDeps = { fs: store.fs, logger: store.logger, entities: entityStoreFactory(store.fs, guard), vars: varRepositoryFactory(store.fs, guard), docs: docRepositoryFactory(store.fs, guard) };
   const harness = {
     ...store,
     ids,
     defaultProject: undefined as string | undefined,
     branch: 'main' as string | undefined,
+    topLevel: (options.withRepository === false ? undefined : resolve('/src/warlog')) as string | undefined,
     contexts: [] as OperationContext[],
     warnings: [] as string[],
     contextWarnings: [] as string[],
@@ -113,8 +118,11 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
         clock: store.clock,
         ids,
         machine: store.machine,
+        runtime: { os: 'linux', node: '22' },
         defaultProject: harness.defaultProject,
         currentBranch: async () => harness.branch,
+        topLevel: async () => harness.topLevel,
+        cwd: harness.topLevel ?? resolve('/outside'),
         index: indexes.sourceFor(store.roots, request.load, request.operation),
         activity: [],
         warnings: [...harness.contextWarnings],

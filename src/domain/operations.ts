@@ -7,6 +7,12 @@ import type { FileSystem } from '../core/ports/file-system.port.ts';
 import type { Logger } from '../core/ports/logger.port.ts';
 import type { EntityStoreFactory } from '../core/storage/entity-store.ts';
 import type { VarRepositoryFactory } from './var/var.repository.ts';
+import { referenceChecker } from './doc/reference-checker.ts';
+import type { DocRepositoryFactory } from './doc/doc.repository.ts';
+import { docExportOperation } from './doc/doc-export.operation.ts';
+import { docImportOperation } from './doc/doc-import.operation.ts';
+import { docEpicListOperation, docHistoryOperation, docListOperation, docVersionsOperation, opportunityListOperation } from './doc/doc-list.operations.ts';
+import { docGetOperation, docSearchOperation, docTocOperation } from './doc/doc-read.operations.ts';
 import { commentAddOperation } from './comment/comment-add.operation.ts';
 import { commentListOperation } from './comment/comment-list.operation.ts';
 import { commentDeleteOperation } from './comment/comment-delete.operation.ts';
@@ -21,6 +27,32 @@ import { noteListOperation } from './note/note-list.operation.ts';
 import { noteSearchOperation } from './note/note-search.operation.ts';
 import { noteDeleteOperation } from './note/note-delete.operation.ts';
 import { noteRestoreOperation } from './note/note-restore.operation.ts';
+import { memorySaveOperation } from './memory/memory-save.operation.ts';
+import { memoryGetOperation } from './memory/memory-get.operation.ts';
+import { memoryListOperation } from './memory/memory-list.operation.ts';
+import { memoryRecallOperation } from './memory/memory-recall.operation.ts';
+import { memoryReviewOperation } from './memory/memory-review.operation.ts';
+import { memorySupersedeOperation } from './memory/memory-supersede.operation.ts';
+import { memoryArchiveOperation, memoryMarkStaleOperation } from './memory/memory-status.operation.ts';
+import { commandRecordOperation } from './playbook/command-record.operation.ts';
+import { issueResolveOperation } from './playbook/issue-resolve.operation.ts';
+import { patternsForOperation } from './playbook/patterns-for.operation.ts';
+import { playbookOperation } from './playbook/playbook.operation.ts';
+import { linkAddOperation } from './link/link-add.operation.ts';
+import { linkRemoveOperation } from './link/link-remove.operation.ts';
+import { linksOfOperation } from './link/links-of.operation.ts';
+import { traceOperation } from './link/trace.operation.ts';
+import { externalLinkOperation } from './external/external-link.operation.ts';
+import { externalUnlinkOperation } from './external/external-unlink.operation.ts';
+import { findByExternalOperation } from './external/find-by-external.operation.ts';
+import { questionnaireDefineOperation } from './questionnaire/questionnaire-define.operation.ts';
+import { questionnaireGetOperation } from './questionnaire/questionnaire-get.operation.ts';
+import { questionnaireListOperation } from './questionnaire/questionnaire-list.operation.ts';
+import { questionnaireStoreFactory } from './questionnaire/questionnaire.store.ts';
+import { responseCreateOperation } from './response/response-create.operation.ts';
+import { responseGetOperation } from './response/response-get.operation.ts';
+import { responseListOperation } from './response/response-list.operation.ts';
+import { responsePromoteOperation } from './response/response-promote.operation.ts';
 import { projectCreateOperation } from './project/project-create.operation.ts';
 import { projectListOperation } from './project/project-list.operation.ts';
 import { projectUpdateOperation } from './project/project-update.operation.ts';
@@ -29,6 +61,7 @@ import { varGetOperation } from './var/var-get.operation.ts';
 import { varListOperation } from './var/var-list.operation.ts';
 import { varSetOperation } from './var/var-set.operation.ts';
 import { writerFactory } from './shared/writer-factory.ts';
+import type { WriterFactory } from './shared/writer-factory.ts';
 import { storyArchiveOperation } from './story/story-archive.operation.ts';
 import { storyCreateOperation } from './story/story-create.operation.ts';
 import { storyGetOperation } from './story/story-get.operation.ts';
@@ -71,20 +104,21 @@ export interface DomainDeps {
   readonly entities: EntityStoreFactory;
   /** Opens the variable repository of a call's roots. */
   readonly vars: VarRepositoryFactory;
+  /** Opens the document repository of a call's roots. */
+  readonly docs: DocRepositoryFactory;
 }
 
 /** Builds the registry content from the domain collaborators. */
 export type OperationsFactory = (deps: DomainDeps) => OperationDefinition[];
 
 /**
- * Builds the product operations.
+ * Operations of the execution tracker (projects to comments, templates, queries, interchange).
  * @param deps - Domain collaborators.
- * @returns The registry content.
+ * @param writers - Writer factory.
+ * @returns The definitions.
  */
-export function productOperations(deps: DomainDeps): OperationDefinition[] {
-  const writers = writerFactory(deps.entities);
+function trackerOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
   return [
-    doctorOperation(deps.logger),
     trackerInitOperation(writers),
     trackerDashboardOperation(deps.fs),
     trackerNextOperation(),
@@ -105,6 +139,16 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     storyListOperation(),
     storyUpdateOperation(writers),
     storyArchiveOperation(writers),
+  ];
+}
+
+/**
+ * Task, subtask, note, comment and template operations.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function workOperations(writers: WriterFactory): OperationDefinition[] {
+  return [
     taskCreateOperation(writers),
     taskGetOperation(),
     taskListOperation(),
@@ -132,9 +176,88 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     templateUpdateOperation(writers),
     templateDeleteOperation(writers),
     templateApplyOperation(writers),
+  ];
+}
+
+/**
+ * Questionnaire and response operations.
+ * @param deps - Domain collaborators.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function reviewOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
+  const stores = questionnaireStoreFactory(deps.fs, deps.entities);
+  return [
+    questionnaireDefineOperation(writers, stores),
+    questionnaireGetOperation(stores),
+    questionnaireListOperation(stores),
+    responseCreateOperation(writers, stores),
+    responseGetOperation(),
+    responseListOperation(),
+    responsePromoteOperation(writers),
+  ];
+}
+
+/**
+ * Variable and memory operations.
+ * @param deps - Domain collaborators.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function knowledgeOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
+  return [
     varSetOperation(deps.vars),
     varGetOperation(deps.vars),
     varListOperation(),
     varDeleteOperation(deps.vars),
+    memorySaveOperation(writers),
+    memoryGetOperation(),
+    memoryListOperation(),
+    memoryRecallOperation(),
+    memoryReviewOperation(deps.fs),
+    memorySupersedeOperation(writers),
+    memoryMarkStaleOperation(writers),
+    memoryArchiveOperation(writers),
+    commandRecordOperation(deps.fs, writers),
+    issueResolveOperation(writers),
+    playbookOperation(deps.fs),
+    patternsForOperation(),
+    linkAddOperation(writers),
+    linkRemoveOperation(writers),
+    linksOfOperation(),
+    traceOperation(),
+    externalLinkOperation(writers),
+    externalUnlinkOperation(writers),
+    findByExternalOperation(),
   ];
+}
+
+/**
+ * Document registry operations.
+ * @param deps - Domain collaborators.
+ * @returns The definitions.
+ */
+function documentOperations(deps: DomainDeps): OperationDefinition[] {
+  return [
+    docImportOperation(deps.fs, deps.docs, deps.vars),
+    docGetOperation(deps.fs, deps.docs),
+    docTocOperation(deps.fs, deps.docs),
+    docSearchOperation(deps.fs, deps.docs),
+    docListOperation(deps.docs),
+    docHistoryOperation(deps.docs),
+    docVersionsOperation(deps.fs, deps.docs),
+    docExportOperation(deps.fs, deps.docs, deps.vars),
+    docEpicListOperation(deps.docs),
+    opportunityListOperation(deps.docs),
+  ];
+}
+
+/**
+ * Builds the product operations.
+ * @param deps - Domain collaborators.
+ * @returns The registry content.
+ */
+export function productOperations(deps: DomainDeps): OperationDefinition[] {
+  const writers = writerFactory(deps.entities);
+  return [doctorOperation(deps.logger, referenceChecker(deps.fs, deps.docs)), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers), ...reviewOperations(deps, writers), ...documentOperations(deps)];
 }

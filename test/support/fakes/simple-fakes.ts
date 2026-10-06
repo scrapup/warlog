@@ -99,6 +99,22 @@ export class MemoryEnv implements Env {
   cwd(): string {
     return this.workDir;
   }
+
+  /**
+   * Returns the platform.
+   * @returns `linux`.
+   */
+  platform(): string {
+    return 'linux';
+  }
+
+  /**
+   * Returns the Node.js version.
+   * @returns `22.1.0`.
+   */
+  nodeVersion(): string {
+    return '22.1.0';
+  }
 }
 
 /** Logger recording every event. */

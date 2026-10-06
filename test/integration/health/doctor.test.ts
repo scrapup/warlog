@@ -50,8 +50,8 @@ describe('warlog doctor on a real store', () => {
       merge_conflicts: [{ root: 'global', path: 'global/memories/01J00000000000000000000M02.md' }],
       pending_links: [{ from: M1, rel: 'relates', target: '01J00000000000000000000X99' }],
       invalid_files: [],
-      document_references: 'not_checked',
-      memories_due_for_review: 'not_checked',
+      document_references: [],
+      memories_due_for_review: [],
       stale_temp_files: [{ root: 'global', path: `global/memories/.${M1}.md.tmp-1-x` }],
     });
     expect(result.stdout).not.toContain(iso.store);

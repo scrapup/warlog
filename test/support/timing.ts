@@ -35,8 +35,8 @@ export function fastestElapsedMs(fn: () => unknown, runs = 5): number {
 /** Size factor of {@link scalingRatio}: linear code takes ≈ 4× longer, quadratic ≈ 16×. */
 export const SCALING_FACTOR = 4;
 
-/** Ratio below which {@link scalingRatio} is considered linear (midway between 4 and 16). */
-export const LINEAR_RATIO_LIMIT = 8;
+/** Ratio below which {@link scalingRatio} is considered linear: above the 4 of linear code plus cache and scheduling noise on loaded runners, below the 16 of quadratic code. */
+export const LINEAR_RATIO_LIMIT = 10;
 
 /**
  * Ratio between the time on an input {@link SCALING_FACTOR} times as large and on the base

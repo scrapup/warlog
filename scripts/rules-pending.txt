@@ -1,35 +1,5 @@
 # Code-level rules not yet proven by a test, tolerated by `rules:coverage --allow-missing`.
 # Each story removes the rules it proves; the file is deleted in TF-104-01.
 
-WL-15  # US-99
-WL-16  # US-99
-WL-17  # US-99
-WL-18  # US-99
-WL-19  # US-99
-WL-20  # US-99
-WL-21  # US-100
-WL-22  # US-100
-WL-23  # US-100
-WL-24  # US-100
-WL-29  # US-101
-WL-30  # US-101
-WL-31  # US-101
-WL-32  # US-101
-WL-33  # US-101
-WL-34  # US-101
-WL-57  # US-102
-WL-58  # US-102
-WL-59  # US-102
-WL-60  # US-102
-WL-61  # US-102
-WL-62  # US-102
-WL-63  # US-102
-WL-64  # US-102
-WL-65  # US-102
-WL-66  # US-102
-WL-67  # US-102
-WL-68  # US-102
-WL-69  # US-102
-WL-73  # US-102
 WL-74  # US-103
 WL-75  # US-103

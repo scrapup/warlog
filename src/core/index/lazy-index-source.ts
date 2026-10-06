@@ -15,8 +15,11 @@ import type { IndexBuilder } from './index-builder.ts';
 import { entityFrom, entityOfType } from './index-source.ts';
 import type { StoreIndex } from './store-index.ts';
 
+/** Types found by probing the repository and global roots (no project). */
+const SCOPE_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['project', 'template', 'memory']);
+
 /** Types found by probing each project directory (`projects/<id>/…`). */
-const PROJECT_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['epic', 'story', 'task', 'note']);
+const PROJECT_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['epic', 'story', 'task', 'note', 'response']);
 
 /** Collaborators of {@link LazyIndexSource}. */
 export interface LazyIndexSourceDeps {
@@ -85,7 +88,7 @@ export class LazyIndexSource implements IndexSource {
    * @throws {WarlogError} `VALIDATION` for a malformed id.
    */
   async lookup(type: EntityType, id: string): Promise<IndexedEntity | undefined> {
-    if (this.built !== undefined || !(PROJECT_TYPES.has(type) || type === 'project' || type === 'template')) {
+    if (this.built !== undefined || !(PROJECT_TYPES.has(type) || SCOPE_TYPES.has(type))) {
       return entityOfType(await this.full(), type, id);
     }
     for (const ref of await this.candidates(type, id)) {
@@ -117,6 +120,9 @@ export class LazyIndexSource implements IndexSource {
   private async candidates(type: EntityType, id: string): Promise<EntityRef[]> {
     if (type === 'template') {
       return [{ type, id, scope: 'global' }];
+    }
+    if (type === 'memory') {
+      return [...(this.deps.roots.repository === undefined ? [] : [{ type, id, scope: 'repo' as const }]), { type, id, scope: 'global' as const }];
     }
     if (this.deps.roots.repository === undefined) {
       return [];

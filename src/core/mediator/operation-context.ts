@@ -19,6 +19,14 @@ export interface PendingActivity {
   readonly input: ActivityInput;
 }
 
+/** Where the call runs (environment of command observations, WL-18). */
+export interface RuntimeInfo {
+  /** Operating system (`darwin`, `linux`, `win32`). */
+  readonly os: string;
+  /** Node.js major version (`22`). */
+  readonly node: string;
+}
+
 /** Context of one operation call. */
 export interface OperationContext {
   /** Store roots of the session. */
@@ -29,10 +37,16 @@ export interface OperationContext {
   readonly ids: IdGenerator;
   /** Machine id. */
   readonly machine: MachineIdProvider;
+  /** Operating system and Node.js major version. */
+  readonly runtime: RuntimeInfo;
   /** Default project (`WARLOG_PROJECT`). */
   readonly defaultProject: string | undefined;
   /** Resolves `branch: "current"` to the active git branch. */
   readonly currentBranch: () => Promise<string | undefined>;
+  /** Top level of the working tree the call runs in (`git rev-parse --show-toplevel`); `undefined` outside a repository. */
+  readonly topLevel: () => Promise<string | undefined>;
+  /** Working directory of the call. */
+  readonly cwd: string;
   /** The view of the store (full or point access, plan §3.7). */
   readonly index: IndexSource;
   /** Activity records appended by the Activity behavior after success (commands only). */

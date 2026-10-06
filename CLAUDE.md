@@ -51,7 +51,30 @@ real `saga-mcp` by `scripts/capture-saga-fixtures.ts` — never edit them by han
 `vars/<name>.yaml` per scope, strict type checks without coercion, `restricted-schema-validator`
 over `ajv` with a keyword allow-list, `var_get/set/list/delete`); an operation may declare
 `positional` (first CLI argument, same field as its flag) and an object result may carry `raw`
-(printed alone unless a format or fields are requested). Test doubles live in `test/support/fakes`; fixture
+(printed alone unless a format or fields are requested). Memory and playbook (US-99): `src/domain/memory` (kinds with validated fields, literal word
+recall ranked by scope → matches → recency, explicit lifecycle, review candidates) and
+`src/domain/playbook` (`command_record` observations as activity, status derived per environment,
+`issue_resolve`, `playbook`, `patterns_for`); `freshActivity` re-reads the activity files because a
+live index does not watch `activity/`; the context carries `runtime` (OS, Node major). Links and traceability (US-100): `src/domain/link` (typed `links` on any entity, prefix parser for
+targets without regular expressions, `links_of` both ways, `trace` as a breadth-first walk over
+links, hierarchy and external keys with a visited set and a 2 000-node cap) and `src/domain/external`
+(tracker references on epics, stories and tasks; no network access anywhere, proven by a test over
+`src/**`). Questionnaires and AAR (US-101): `src/domain/questionnaire` (ten question types, each with its
+definition schema, answer check and rendering, registered in `question-type-registry.ts`; the simple
+`when` condition; `QuestionnaireStore` reads straight from disk because a slug may exist at both
+scopes and the index keys questionnaires by scope; the built-in `aar` is a code constant until first
+used) and `src/domain/response` (validated answers with a copy of the questions, promotion to a
+memory). warlog never decides when a review is opened (WL-34). Document registry (US-102): `src/domain/doc` —
+epic → opportunity → document folders under `<area>/docs` (area `repo` or `global`); `doc_import`
+plans everything first (`import/document-planner.ts`: size limits, secrets, SDD structure, image
+links through `asset-collector.ts` with real-path containment) and writes only a validated plan
+(`import/document-writer.ts`: assets, Markdown, section index, `.meta` last so a half-written import
+is never listed; `version-snapshotter.ts` keeps replaced content); `import-path-policy.ts` confines
+reads and exports to the repository working tree plus the global variable `docs.import.allowed_roots`;
+`markdown-scanner.ts`, `section-index.ts` and `page-splitter.ts` are linear scans without regular
+expressions; reference mode stores only metadata and a SHA-256, read live by `doc-reader.ts`;
+`reference-checker.ts` feeds the `doctor` section `document_references`. The registry sits outside
+the entity index (it skips `docs/`), so listings read the folders directly. Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.

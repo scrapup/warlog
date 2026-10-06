@@ -5,7 +5,7 @@ import { LiveIndexSource } from '../../../../src/core/index/index-source.ts';
 import { StoreIndex } from '../../../../src/core/index/store-index.ts';
 import type { EntityLink } from '../../../../src/core/ports/store-view.port.ts';
 import { stringifyFrontMatter } from '../../../../src/core/storage/front-matter-codec.ts';
-import { DoctorHandler, NOT_CHECKED, STALE_TEMP_MS } from '../../../../src/domain/health/doctor.handler.ts';
+import { DoctorHandler, STALE_TEMP_MS } from '../../../../src/domain/health/doctor.handler.ts';
 import { doctorOperation } from '../../../../src/domain/health/doctor.operation.ts';
 import { MemoryFileSystem } from '../../../support/fakes/memory-file-system.ts';
 import { FixedClock, RecordingLogger } from '../../../support/fakes/simple-fakes.ts';
@@ -28,6 +28,9 @@ function memory(id: string, extra: Record<string, unknown> = {}): string {
   return stringifyFrontMatter({ data: { id, type: 'memory', rev: 1, created_at: 'x', updated_at: 'x', machine: 'm', ...extra }, body: '' });
 }
 
+/** No referenced documents. */
+const NO_REFERENCES = async (): Promise<[]> => [];
+
 /**
  * Runs `doctor` over a file system.
  * @param fs - File system.
@@ -37,7 +40,7 @@ async function report(fs: MemoryFileSystem): Promise<Record<string, unknown>> {
   const { index } = await new IndexBuilder({ fs, clock: new FixedClock() }).build({ global: GLOBAL_ROOT, repository: { root: REPO_ROOT, key: 'k', mode: 'in-repo', mainWorktree: REPO_ROOT }, warnings: [] });
   const contexts = new FixtureContextFactory();
   contexts.index = new LiveIndexSource(index);
-  const result = await new DoctorHandler(new RecordingLogger()).handle({}, await contexts.create());
+  const result = await new DoctorHandler(new RecordingLogger(), NO_REFERENCES).handle({}, await contexts.create());
   return result.kind === 'object' ? (result.value as Record<string, unknown>) : {};
 }
 
@@ -61,8 +64,8 @@ describe('doctor', () => {
       merge_conflicts: [{ root: 'repo', path: 'memories/01J00000000000000000000M03.md' }],
       invalid_files: [{ root: 'repo', path: 'memories/01J00000000000000000000M04.md', reason: 'front_matter' }],
       pending_links: [{ from: M1, rel: 'relates', target: MISSING }],
-      document_references: NOT_CHECKED,
-      memories_due_for_review: NOT_CHECKED,
+      document_references: [],
+      memories_due_for_review: [],
       stale_temp_files: [{ root: 'repo', path: `memories/.${M1}.md.tmp-1-old`, age_minutes: 61 }],
     });
     expect(new Map(fs.files)).toEqual(before);
@@ -87,7 +90,7 @@ describe('doctor', () => {
     const contexts = new FixtureContextFactory();
     contexts.index = new LiveIndexSource(new BrokenLinksIndex());
     const logger = new RecordingLogger();
-    const result = await new DoctorHandler(logger).handle({}, await contexts.create());
+    const result = await new DoctorHandler(logger, NO_REFERENCES).handle({}, await contexts.create());
     expect(result).toMatchObject({ kind: 'object', value: { healthy: false, pending_links: { error: 'INTERNAL' }, conflict_copies: [] } });
     expect(logger.events).toEqual([{ level: 'error', event: 'doctor.probe_failed', fields: { section: 'pending_links', error_code: 'UNEXPECTED', error_name: 'TypeError' } }]);
   });
@@ -104,8 +107,8 @@ describe('doctor', () => {
   });
 
   it('[WL-35] is a top-level read-only operation that needs the full index', async () => {
-    expect(doctorOperation(new RecordingLogger())).toMatchObject({ name: 'doctor', group: 'doctor', action: '', kind: 'query', load: 'full' });
-    const deps = fixtureDeps([doctorOperation(new RecordingLogger())]);
+    expect(doctorOperation(new RecordingLogger(), NO_REFERENCES)).toMatchObject({ name: 'doctor', group: 'doctor', action: '', kind: 'query', load: 'full' });
+    const deps = fixtureDeps([doctorOperation(new RecordingLogger(), NO_REFERENCES)]);
     expect((await deps.mediator.send('doctor', {})).result).toMatchObject({ kind: 'object', value: { healthy: true } });
   });
 });

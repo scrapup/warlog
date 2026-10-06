@@ -141,6 +141,51 @@ async function listDecided(fs: FileSystem, root: RootKind, dir: string, prefix: 
     .sort((a, b) => compareCodeUnits(a.file.path, b.file.path));
 }
 
+/** A conflict copy found by a scan. */
+interface ConflictCopyFile {
+  /** Discriminant. */
+  readonly kind: 'conflict_copy';
+  /** The file. */
+  readonly file: ScannedFile;
+}
+
+/** A temporary file found by a scan. */
+interface TempFileFound {
+  /** Discriminant. */
+  readonly kind: 'temp';
+  /** The file. */
+  readonly file: ScannedFile;
+  /** Last modification time (ms since epoch). */
+  readonly mtimeMs: number;
+}
+
+/** A temporary file that vanished before it was read. */
+interface GoneFile {
+  /** Discriminant. */
+  readonly kind: 'gone';
+  /** The file. */
+  readonly file: ScannedFile;
+}
+
+/** What a temp file or a conflict copy contributes. */
+type Other = ConflictCopyFile | TempFileFound | GoneFile;
+
+/** An entity or variable file read. */
+interface ReadFile {
+  /** The file. */
+  readonly file: ScannedFile;
+  /** What reading it gave. */
+  readonly outcome: ReadOutcome;
+}
+
+/** Files read and ready to be put into the view. */
+interface Prepared {
+  /** Temps and conflict copies. */
+  readonly others: readonly Other[];
+  /** Entity and variable outcomes. */
+  readonly results: readonly ReadFile[];
+}
+
 /** Builds the view and applies file changes to it. */
 export class IndexBuilder {
   /** Collaborators. */
@@ -196,8 +241,9 @@ export class IndexBuilder {
     if (stat === undefined) {
       index.removeTree(path, sep);
     } else if (stat.isDirectory) {
+      const prepared = await this.read(await listDecided(this.deps.fs, file.root, path, file.relative));
       index.removeTree(path, sep);
-      await this.applyAll(index, await listDecided(this.deps.fs, file.root, path, file.relative));
+      this.commit(index, prepared);
     } else if (scanDecision(file) !== 'skip') {
       await this.applyAll(index, [{ file, decision: scanDecision(file) }]);
     }
@@ -210,31 +256,55 @@ export class IndexBuilder {
    * @returns Number of files read.
    */
   private async applyAll(index: StoreIndex, decided: readonly Decided[]): Promise<number> {
-    const ordered = [...decided].sort((a, b) => (a.file.root === b.file.root ? 0 : a.file.root === 'global' ? -1 : 1));
-    const toRead = ordered.filter((d) => d.decision === 'read');
-    for (const d of ordered.filter((x) => x.decision !== 'read')) {
-      await this.applyNonEntity(index, d.file, d.decision);
-    }
-    const results = await mapLimit(toRead, MAX_OPEN_FILES, async (d) => ({ file: d.file, outcome: await loadStoreFile(this.deps.fs, d.file, d.kind) }));
-    results.forEach((r) => apply(index, r));
-    return toRead.length;
+    const prepared = await this.read(decided);
+    this.commit(index, prepared);
+    return prepared.results.length;
   }
 
   /**
-   * Records a temp file or a conflict copy.
+   * Reads everything a set of decided files contributes, without touching the view.
+   * @param decided - Files with their decisions.
+   * @returns Temps, conflict copies and entity or variable outcomes, ready to commit.
+   */
+  private async read(decided: readonly Decided[]): Promise<Prepared> {
+    const ordered = [...decided].sort((a, b) => (a.file.root === b.file.root ? 0 : a.file.root === 'global' ? -1 : 1));
+    const others = await Promise.all(ordered.filter((x) => x.decision !== 'read').map((d) => this.readNonEntity(d.file, d.decision)));
+    const results = await mapLimit(
+      ordered.filter((d) => d.decision === 'read'),
+      MAX_OPEN_FILES,
+      async (d) => ({ file: d.file, outcome: await loadStoreFile(this.deps.fs, d.file, d.kind) }),
+    );
+    return { others, results };
+  }
+
+  /**
+   * Puts prepared files into the view in one synchronous step, so a reader never sees a half
+   * applied directory.
    * @param index - View.
+   * @param prepared - What {@link IndexBuilder.read} produced.
+   */
+  private commit(index: StoreIndex, prepared: Prepared): void {
+    prepared.others.forEach((o) => {
+      if (o.kind === 'conflict_copy') {
+        index.exclude({ ...o.file, reason: 'conflict_copy' }, 'conflict_copy');
+      } else if (o.kind === 'temp') {
+        index.addTemp({ ...o.file, mtimeMs: o.mtimeMs });
+      }
+    });
+    prepared.results.forEach((r) => apply(index, r));
+  }
+
+  /**
+   * Reads what a temp file or a conflict copy contributes.
    * @param file - File.
    * @param decision - `temp` or `conflict_copy`.
-   * @returns When recorded.
+   * @returns The conflict copy, the temp file with its time, or nothing when the temp vanished.
    */
-  private async applyNonEntity(index: StoreIndex, file: ScannedFile, decision: ScanDecision): Promise<void> {
+  private async readNonEntity(file: ScannedFile, decision: ScanDecision): Promise<Other> {
     if (decision === 'conflict_copy') {
-      index.exclude({ ...file, reason: 'conflict_copy' }, 'conflict_copy');
-      return;
+      return { kind: 'conflict_copy', file };
     }
     const stat = await this.deps.fs.lstat(file.path);
-    if (stat?.isFile === true) {
-      index.addTemp({ ...file, mtimeMs: stat.mtimeMs });
-    }
+    return stat?.isFile === true ? { kind: 'temp', file, mtimeMs: stat.mtimeMs } : { kind: 'gone', file };
   }
 }

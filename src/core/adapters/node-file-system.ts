@@ -90,13 +90,29 @@ export class NodeFileSystem implements FileSystem {
   }
 
   /**
+   * Reads a file as bytes.
+   * @param path - File path.
+   * @param maxBytes - Size limit.
+   * @returns The content, or `undefined` above the limit.
+   * @throws {WarlogError} `NOT_FOUND` when missing.
+   */
+  async readBinary(path: string, maxBytes: number): Promise<Uint8Array | undefined> {
+    try {
+      const stat = await fs.stat(path);
+      return stat.size > maxBytes ? undefined : new Uint8Array(await fs.readFile(path));
+    } catch (error: unknown) {
+      throw this.mapMissing(error, path);
+    }
+  }
+
+  /**
    * Writes a file atomically (temporary file + fsync + rename, WL-41).
    * @param path - File path.
-   * @param data - Content.
+   * @param data - Content (text or bytes).
    * @returns A promise resolved once written.
    * @throws {WarlogError} `INTERNAL` when the rename keeps failing; the target is untouched.
    */
-  async writeFileAtomic(path: string, data: string): Promise<void> {
+  async writeFileAtomic(path: string, data: string | Uint8Array): Promise<void> {
     await fs.mkdir(dirname(path), { recursive: true });
     const temp = join(dirname(path), `.${basename(path)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`);
     try {
@@ -224,10 +240,10 @@ export class NodeFileSystem implements FileSystem {
    * @param data - Content.
    * @returns A promise resolved once durable.
    */
-  private async writeTemp(temp: string, data: string): Promise<void> {
+  private async writeTemp(temp: string, data: string | Uint8Array): Promise<void> {
     const handle = await fs.open(temp, 'wx');
     try {
-      await handle.writeFile(data, 'utf8');
+      await (typeof data === 'string' ? handle.writeFile(data, 'utf8') : handle.writeFile(data));
       await handle.sync();
     } finally {
       await handle.close();

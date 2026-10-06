@@ -111,8 +111,20 @@ export class TrackerWriter {
    * @throws {WarlogError} `CONFLICT` (`stale_rev`) when the file changed since; `NOT_FOUND`.
    */
   async update(entity: IndexedEntity, change: EntityChange, events: readonly ActivityEvent[]): Promise<EntityRecord> {
-    const ref = refOf(entity);
-    const record = await this.store.repo.update(ref, change, Number(entity.record.data['rev']));
+    return this.updateRef(refOf(entity), Number(entity.record.data['rev']), change, events);
+  }
+
+  /**
+   * Updates an entity read outside the view (a questionnaire read from disk).
+   * @param ref - Entity reference.
+   * @param expectedRev - Revision the change was based on.
+   * @param change - Patch and optional body.
+   * @param events - Activity records.
+   * @returns The stored record.
+   * @throws {WarlogError} `CONFLICT` (`stale_rev`) when the file changed since; `NOT_FOUND`.
+   */
+  async updateRef(ref: EntityRef, expectedRev: number, change: EntityChange, events: readonly ActivityEvent[]): Promise<EntityRecord> {
+    const record = await this.store.repo.update(ref, change, expectedRev);
     await this.applied(ref, events);
     return record;
   }
