@@ -6,6 +6,7 @@
 import { basename, dirname, join, sep } from 'node:path';
 import { WarlogError } from '../../../core/errors/warlog-error.ts';
 import type { FileSystem } from '../../../core/ports/file-system.port.ts';
+import { compareCodeUnits } from '../../../core/security/compare.ts';
 import { isSlug } from '../../../core/security/identifiers.ts';
 import type { SecretGuard } from '../../../core/security/secret-guard.ts';
 import { sha256Hex } from '../../../core/security/sha256.ts';
@@ -200,7 +201,7 @@ export class DocumentPlanner {
    * @returns The sources.
    */
   private async folderSources(request: ImportRequest, problems: Issue[]): Promise<Source[]> {
-    const names = (await this.fs.readDir(request.real)).filter(isMarkdownName).sort();
+    const names = (await this.fs.readDir(request.real)).filter(isMarkdownName).sort(compareCodeUnits);
     const sources: Source[] = [];
     for (const name of names) {
       const path = join(request.real, name);
