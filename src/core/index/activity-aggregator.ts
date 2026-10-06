@@ -7,6 +7,7 @@ import type { FileSystem } from '../ports/file-system.port.ts';
 import type { ActivitySummary, CommandObservation, UsageStats } from '../ports/store-view.port.ts';
 import { compareCodeUnits } from '../security/compare.ts';
 import { isPlainRecord } from '../security/plain-record.ts';
+import { activityFilesSince } from './activity-files.ts';
 import { MAX_OPEN_FILES, mapLimit } from './bounded.ts';
 import { readRegularFile } from './file-loader.ts';
 
@@ -117,22 +118,6 @@ function accumulateText(acc: Accumulator, text: string): void {
 }
 
 /**
- * Lists the activity files of a root within the window.
- * @param fs - File system.
- * @param root - Store root.
- * @param since - First day kept (`yyyy-mm-dd`).
- * @returns Absolute file paths.
- */
-async function activityFiles(fs: FileSystem, root: string, since: string): Promise<string[]> {
-  const dir = `${root}/activity`;
-  const machines = await fs.readDir(dir);
-  const perMachine = await Promise.all(
-    machines.map(async (machine) => (await fs.readDir(`${dir}/${machine}`)).filter((f) => f.endsWith('.jsonl') && f.slice(0, 10) >= since).map((f) => `${dir}/${machine}/${f}`)),
-  );
-  return perMachine.flat();
-}
-
-/**
  * Reads the activity of the given roots.
  * @param fs - File system.
  * @param roots - Store roots holding `activity/`.
@@ -141,7 +126,7 @@ async function activityFiles(fs: FileSystem, root: string, since: string): Promi
  */
 export async function aggregateActivity(fs: FileSystem, roots: readonly string[], now: Date): Promise<ActivitySummary> {
   const since = new Date(now.getTime() - ACTIVITY_WINDOW_DAYS * MS_PER_DAY).toISOString().slice(0, 10);
-  const files = (await Promise.all(roots.map((root) => activityFiles(fs, root, since)))).flat();
+  const files = (await Promise.all(roots.map((root) => activityFilesSince(fs, root, since)))).flat();
   const acc: Accumulator = { usage: new Map(), commands: new Map(), invalidLines: 0, unreadableFiles: 0 };
   await mapLimit(files, MAX_OPEN_FILES, async (file) => {
     const read = await readRegularFile(fs, file);

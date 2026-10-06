@@ -74,6 +74,10 @@ export class WatcherService {
   private rescanTimer: unknown;
   /** Whether a rescan is running. */
   private rescanning = false;
+  /** A change or rescan request arrived while a rescan was building: it ran on an older view. */
+  private dirty = false;
+  /** Whether the service was stopped (a rescan finishing afterwards must not touch the index). */
+  private halted = false;
   /** Consecutive failed rescans. */
   private failures = 0;
   /** Delay before the next fallback rescan. */
@@ -105,12 +109,14 @@ export class WatcherService {
   /** Starts watching both roots. */
   start(): void {
     this.running = true;
+    this.halted = false;
     this.watches.forEach((w) => this.arm(w));
   }
 
   /** Stops watches, pending reloads and rescans. */
   stop(): void {
     this.running = false;
+    this.halted = true;
     this.watches.forEach((w) => {
       w.stop?.();
       w.stop = undefined;
@@ -126,29 +132,38 @@ export class WatcherService {
   }
 
   /**
-   * Runs one full rescan and swaps it into the index (a rescan already running is not repeated).
+   * Runs one full rescan and swaps it into the index. A request that arrives while one is running
+   * is not lost: the snapshot being built predates it, so one more rescan follows. A rescan that
+   * finishes after `stop()` leaves the index alone.
    * @returns When done.
    */
   async rescan(): Promise<void> {
     if (this.rescanning) {
+      this.dirty = true;
       return;
     }
     this.rescanning = true;
+    this.dirty = false;
     try {
       const { index, stats } = await this.deps.builder.build(this.deps.roots);
-      this.deps.index.replaceWith(index);
-      this.deps.logger.log(stats.durationMs > RESCAN_MS ? 'warn' : 'debug', 'index.built', { trigger: 'rescan', ...buildFields(stats) });
+      if (!this.halted) {
+        this.deps.index.replaceWith(index);
+        this.deps.logger.log(stats.durationMs > RESCAN_MS ? 'warn' : 'debug', 'index.built', { trigger: 'rescan', ...buildFields(stats) });
+      }
       if (this.failures > 0) {
-        this.deps.logger.log('info', 'watcher.rescan_recovered', { failures: this.failures });
+        this.deps.logger.log('warn', 'watcher.rescan_recovered', { failures: this.failures });
       }
       this.failures = 0;
     } catch (error: unknown) {
       this.failures += 1;
-      if (this.failures === 1) {
-        this.deps.logger.log('warn', 'watcher.rescan_failed', { ...errorFields(error) });
+      if ((this.failures & (this.failures - 1)) === 0) {
+        this.deps.logger.log('warn', 'watcher.rescan_failed', { failures: this.failures, ...errorFields(error) });
       }
     } finally {
       this.rescanning = false;
+      if (this.dirty && !this.halted) {
+        void this.rescan();
+      }
     }
   }
 
@@ -227,6 +242,7 @@ export class WatcherService {
   private async reload(path: string): Promise<void> {
     try {
       await this.deps.builder.reload(this.deps.index, this.deps.roots, path);
+      this.dirty ||= this.rescanning;
     } catch (error: unknown) {
       this.deps.logger.log('warn', 'watcher.reload_failed', { ...errorFields(error) });
     }
@@ -281,7 +297,7 @@ export class WatcherService {
     if (this.fallback) {
       this.scheduleRescan();
     } else {
-      this.deps.logger.log('info', 'watcher.recovered', {});
+      this.deps.logger.log('warn', 'watcher.recovered', {});
     }
   }
 }

@@ -6,6 +6,7 @@
 import type { FileSystem } from '../ports/file-system.port.ts';
 import { compareCodeUnits } from '../security/compare.ts';
 import { isPlainRecord } from '../security/plain-record.ts';
+import { activityFilesSince } from './activity-files.ts';
 import { MAX_OPEN_FILES, mapLimit } from './bounded.ts';
 import { readRegularFile } from './file-loader.ts';
 
@@ -28,22 +29,6 @@ interface ParsedFile {
   readonly records: ActivityRecord[];
   /** Unreadable lines. */
   readonly invalid: number;
-}
-
-/**
- * Lists the activity files of a root from a day on.
- * @param fs - File system.
- * @param root - Store root.
- * @param sinceDay - First day kept (`yyyy-mm-dd`, `''` = all).
- * @returns Absolute file paths.
- */
-async function dayFiles(fs: FileSystem, root: string, sinceDay: string): Promise<string[]> {
-  const dir = `${root}/activity`;
-  const machines = await fs.readDir(dir);
-  const perMachine = await Promise.all(
-    machines.map(async (machine) => (await fs.readDir(`${dir}/${machine}`)).filter((f) => f.endsWith('.jsonl') && f.slice(0, 10) >= sinceDay).map((f) => `${dir}/${machine}/${f}`)),
-  );
-  return perMachine.flat();
 }
 
 /**
@@ -78,7 +63,7 @@ function parseLines(text: string): ParsedFile {
  */
 export async function readActivity(fs: FileSystem, roots: readonly string[], since?: string): Promise<ActivityRead> {
   const sinceDay = since === undefined ? '' : since.slice(0, 10);
-  const files = (await Promise.all(roots.map((root) => dayFiles(fs, root, sinceDay)))).flat();
+  const files = (await Promise.all(roots.map((root) => activityFilesSince(fs, root, sinceDay)))).flat();
   const reads = await mapLimit(files, MAX_OPEN_FILES, (file) => readRegularFile(fs, file));
   const parsed = reads.filter((r) => 'text' in r).map((r) => parseLines(r.text));
   const records = parsed

@@ -81,10 +81,12 @@ export class PathGuard {
   }
 
   /**
-   * Returns the canonical path of the deepest existing ancestor of `target` (stops at `root`).
+   * Returns the canonical path of the deepest existing ancestor of `target` (stops at `root`). A
+   * symbolic link that points nowhere is rejected: a later write would follow it out of the root.
    * @param target - Absolute target.
    * @param root - Root path.
    * @returns Canonical path.
+   * @throws {WarlogError} `VALIDATION` when a component is a dangling symbolic link.
    */
   private async deepestRealAncestor(target: string, root: string): Promise<string> {
     let current = target;
@@ -92,6 +94,9 @@ export class PathGuard {
       const real = await this.realOrUndefined(current);
       if (real !== undefined) {
         return real;
+      }
+      if ((await this.fs.lstat(current))?.isSymbolicLink === true) {
+        throw new WarlogError('VALIDATION', 'path goes through a dangling symbolic link', { root });
       }
       current = resolve(current, '..');
     }

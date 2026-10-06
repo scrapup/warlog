@@ -4,6 +4,7 @@
  */
 import type { Clock } from '../ports/clock.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
+import type { Logger } from '../ports/logger.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
 import type { PathGuard } from '../security/path-guard.ts';
 import { EntityFileRepository } from './entity-file-repository.ts';
@@ -35,11 +36,12 @@ export type EntityStoreFactory = (request: EntityStoreRequest) => EntityStore;
  * Builds the production factory.
  * @param fs - File system.
  * @param guard - Path guard.
+ * @param logger - Logger for failures that must not change the outcome.
  * @returns The factory.
  */
-export function entityStoreFactory(fs: FileSystem, guard: PathGuard): EntityStoreFactory {
+export function entityStoreFactory(fs: FileSystem, guard: PathGuard, logger?: Logger): EntityStoreFactory {
   return (request) => {
     const paths = new EntityPaths(request.roots, guard);
-    return { paths, repo: new EntityFileRepository({ fs, paths, clock: request.clock, machine: request.machine }) };
+    return { paths, repo: new EntityFileRepository({ fs, paths, clock: request.clock, machine: request.machine, ...(logger === undefined ? {} : { logger }) }) };
   };
 }

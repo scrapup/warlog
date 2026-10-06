@@ -145,7 +145,7 @@ export function composeCore(options: ComposeOptions = {}): Core {
     machine,
     indexes: (roots, request) => indexes.sourceFor(roots, request.load, request.operation),
   });
-  const registry = new OperationRegistry(operations({ fs, logger, entities: entityStoreFactory(fs, guard), vars: varRepositoryFactory(fs, guard), docs: docRepositoryFactory(fs, guard) }));
+  const registry = new OperationRegistry(operations({ fs, logger, entities: entityStoreFactory(fs, guard, logger), vars: varRepositoryFactory(fs, guard), docs: docRepositoryFactory(fs, guard) }));
   const redactions = staticRedactions(env);
   const behaviors = buildPipeline({ logger, redactions, contexts, secretGuard: new SecretGuard(), activity: new ActivityLog({ fs, clock, machine, guard, logger }) });
   /**
