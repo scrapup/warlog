@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { gitExecutable } from '../support/git-executable.ts';
 import { runNode } from '../support/run-node.ts';
 import { generateStore } from '../support/store-generator.ts';
 
@@ -19,7 +20,7 @@ beforeAll(() => {
   base = realpathSync.native(mkdtempSync(join(tmpdir(), 'warlog-var-bench-')));
   const store = generateStore(base, 10_000);
   const work = join(base, 'repo');
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: work });
+  execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: work });
   mkdirSync(join(store.globalRoot, 'global', 'vars'), { recursive: true });
 }, 120_000);
 

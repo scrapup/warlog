@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import { packAndInstall } from '../support/packed-package.ts';
 import type { InstalledPackage } from '../support/packed-package.ts';
@@ -75,7 +76,7 @@ describe('warlog variables from the packed tarball', () => {
   it('[WL-25] [WL-39] var get prints the raw value of the most specific scope with exit codes 0, 2 and 3', () => {
     const iso = isolatedEnv();
     try {
-      execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
       const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
       expect(run(['var', 'set', 'forge.parallel_executors', '--value', 'true', '--scope', 'global']).status).toBe(0);
       expect(run(['var', 'set', 'forge.parallel_executors', '--value', 'false', '--scope', 'repo']).status).toBe(0);
