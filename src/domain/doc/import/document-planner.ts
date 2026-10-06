@@ -3,12 +3,13 @@
  * every document, collects and checks its images, and returns everything to write. Any problem in
  * any document fails the whole plan with every problem listed, before a byte is written (WL-62).
  */
-import { basename, dirname, join, sep } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { WarlogError } from '../../../core/errors/warlog-error.ts';
 import type { FileSystem } from '../../../core/ports/file-system.port.ts';
 import { compareCodeUnits } from '../../../core/security/compare.ts';
 import { isSlug } from '../../../core/security/identifiers.ts';
-import type { SecretGuard } from '../../../core/security/secret-guard.ts';
+import { isInside } from '../../../core/security/path-guard.ts';
+import type { SecretFinding, SecretGuard } from '../../../core/security/secret-guard.ts';
 import { sha256Hex } from '../../../core/security/sha256.ts';
 import type { DocArea, DocKind, DocLocation, DocMode, DocumentMeta } from '../doc.schema.ts';
 import type { DocRepository } from '../doc.repository.ts';
@@ -101,13 +102,16 @@ interface Source {
 }
 
 /**
- * Path of a source file as the caller gave it (a file of a folder is the folder plus its name).
+ * Path of a copied source file as recorded in the metadata: relative to the repository when the
+ * file is inside it, else just its name. An absolute path would put the user's home folder into
+ * a file that is versioned and published.
  * @param request - The request.
  * @param source - The file.
  * @returns The path recorded in the metadata.
  */
 function givenPath(request: ImportRequest, source: Source): string {
-  return source.path === request.real ? request.given : join(request.given, source.name).split(sep).join('/');
+  const top = request.topLevel;
+  return top !== undefined && isInside(top, source.path) ? relativePosix(top, source.path) : source.name;
 }
 
 /**
@@ -145,6 +149,18 @@ export class DocumentPlanner {
   }
 
   /**
+   * Secret patterns in a file's text, as problems that name the file (never the secret), so one
+   * secret does not hide the other problems of the registration.
+   * @param file - File shown in the problem.
+   * @param text - Its text.
+   * @returns One problem when a secret is found.
+   */
+  private secretIssues(file: string, text: string): Issue[] {
+    const findings = this.guard.scan(text).map((f) => ({ kind: f.kind, path: file }));
+    return findings.length === 0 ? [] : [{ path: file, message: `matches a known secret pattern (${[...new Set(findings.map((f) => f.kind))].join(', ')}); remove it and register again`, findings }];
+  }
+
+  /**
    * Plans the registration.
    * @param request - What to register.
    * @returns The plan.
@@ -168,6 +184,10 @@ export class DocumentPlanner {
     }
     this.checkBacklogs([...existing.map((d) => d.kind), ...sources.map((s) => s.kind)], problems);
     if (problems.length > 0) {
+      const secrets = problems.filter((p) => p.findings !== undefined);
+      if (secrets.length === problems.length) {
+        throw new WarlogError('SECRET_REJECTED', 'a document matches a known secret pattern; nothing was registered', { findings: secrets.flatMap((p) => p.findings ?? []) });
+      }
       throw new WarlogError('VALIDATION', `${problems.length} problem(s) found; nothing was registered`, { issues: problems });
     }
     return { area: request.area, epic, opportunity, mode: request.mode, documents };
@@ -257,11 +277,13 @@ export class DocumentPlanner {
       problems.push({ path: source.name, message: 'larger than 2 MB' });
       return undefined;
     }
-    this.guard.assertClean(text);
+    problems.push(...this.secretIssues(source.name, text));
     const scan = scanMarkdown(text);
     problems.push(...checkSddStructure(source.kind, scan.headings).map((message) => ({ path: source.name, message })));
+    problems.push(...scan.unscannedLines.map((line) => ({ path: source.name, message: `line ${line}: too many image-like constructs to check its image links; split the line` })));
     const collected = await this.assets.collect({ kind: source.kind, root: await this.fs.realpath(root), docDir: dirname(source.path) }, scan.images);
     problems.push(...collected.problems.map((message) => ({ path: source.name, message })));
+    problems.push(...collected.assets.filter((a) => a.path.endsWith('.puml') || a.path.endsWith('.svg')).flatMap((a) => this.secretIssues(`${source.name} → ${a.path}`, new TextDecoder().decode(a.bytes))));
     if (problems.length > before) {
       return undefined;
     }
@@ -289,4 +311,6 @@ export interface Issue {
   readonly path: string;
   /** What is wrong. */
   readonly message: string;
+  /** Secret findings (kinds and file, never the value) when the problem is a secret. */
+  readonly findings?: SecretFinding[];
 }

@@ -34,6 +34,40 @@ describe('scanMarkdown', () => {
     scanMarkdown(`${'![['.repeat(20_000)}\n${'`'.repeat(50_000)}\n${'(('.repeat(50_000)}`);
     expect(Date.now() - started).toBeLessThan(2_000);
   });
+
+  it.each(['![[', '![a](<', '![a](b (', '![a](![a](', '![a](((', '![a](<x>', '![a](b "', '`a``b```c````d'])('[WL-48] a 2 MB line of %p is scanned in well under a second', (unit) => {
+    const text = unit.repeat(Math.floor(2_000_000 / unit.length));
+    const started = Date.now();
+    const scan = scanMarkdown(text);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(scan.images.length + scan.unscannedLines.length).toBeGreaterThanOrEqual(unit.startsWith('`') ? 0 : 1);
+  });
+
+  it('[WL-62] a line whose image links cannot be scanned in bounded work is reported, never silently skipped', () => {
+    expect(scanMarkdown(`${'![a](<'.repeat(50_000)}\nok ![b](c.png)\n`)).toMatchObject({ unscannedLines: [1], images: [{ dest: 'c.png', line: 2 }] });
+    expect(scanMarkdown('![a](b.png) and ![c](d.png)').unscannedLines).toEqual([]);
+  });
+
+  it('[WL-66] the section index of a document with hundreds of thousands of headings is built in linear time', () => {
+    const text = Array.from({ length: 200_000 }, (_, i) => `## h${i}`).join('\n');
+    const started = Date.now();
+    const toc = buildToc(text, scanMarkdown(text).headings);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(toc).toHaveLength(200_000);
+    expect(toc.at(-1)?.byte_end).toBe(Buffer.byteLength(text));
+  });
+
+  it('[WL-66] sections end at the next heading of the same or a higher level', () => {
+    const text = '# A\n## B\n### C\n## D\n# E\n';
+    const toc = buildToc(text, scanMarkdown(text).headings);
+    expect(toc.map((t) => [t.title, text.slice(t.byte_start, t.byte_end)])).toEqual([
+      ['A', '# A\n## B\n### C\n## D\n'],
+      ['B', '## B\n### C\n'],
+      ['C', '### C\n'],
+      ['D', '## D\n'],
+      ['E', '# E\n'],
+    ]);
+  });
 });
 
 describe('section index', () => {

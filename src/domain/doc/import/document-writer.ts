@@ -2,6 +2,7 @@
  * Writes a validated plan (WL-60, WL-63, WL-64): assets, then the Markdown, then the section
  * index, and the metadata last, so a half-written registration is never listed.
  */
+import { WarlogError } from '../../../core/errors/warlog-error.ts';
 import type { OperationContext } from '../../../core/mediator/operation-context.ts';
 import type { FileSystem } from '../../../core/ports/file-system.port.ts';
 import type { DocRepository } from '../doc.repository.ts';
@@ -59,6 +60,9 @@ export class DocumentWriter {
    * @returns One summary per document.
    */
   async apply(plan: ImportPlan, context: OperationContext, keepVersion: boolean): Promise<DocumentSummary[]> {
+    if (keepVersion && plan.documents.some((d) => d.existing?.mode === 'reference')) {
+      throw new WarlogError('VALIDATION', 'a document registered by reference has no stored content to keep as a version', { field: 'version', reason: 'version_of_reference' });
+    }
     await this.repo.touchCategories(plan.area, plan.epic, plan.opportunity);
     const out: DocumentSummary[] = [];
     for (const doc of plan.documents) {
@@ -68,41 +72,72 @@ export class DocumentWriter {
   }
 
   /**
-   * Writes one document.
+   * Writes one document under the lock of its metadata file. Nothing the document had before is
+   * removed until the new content and metadata are in place, so a failure leaves the previous
+   * registration listed with its own files; the replaced assets are removed afterwards.
    * @param doc - Planned document.
    * @param plan - The plan.
    * @param context - Call context.
    * @param keepVersion - Keep the replaced content as a version.
    * @returns Its summary.
+   * @throws {WarlogError} `CONFLICT` (`stale_rev`) when another registration replaced the document since it was planned.
    */
   private async write(doc: PlannedDocument, plan: ImportPlan, context: OperationContext, keepVersion: boolean): Promise<DocumentSummary> {
     const { paths } = this.repo;
-    if (keepVersion && doc.existing !== undefined) {
-      await new VersionSnapshotter(this.fs, this.repo).snapshot(doc.loc, doc.existing);
+    const release = await this.fs.lock(await paths.meta(doc.loc));
+    try {
+      const current = await this.repo.readMeta(doc.loc);
+      if ((current?.rev ?? 0) !== (doc.existing?.rev ?? 0)) {
+        throw new WarlogError('CONFLICT', `${doc.loc.kind} was registered again while this import ran; run it again`, { reason: 'stale_rev', kind: doc.loc.kind });
+      }
+      if (keepVersion && doc.existing !== undefined) {
+        await new VersionSnapshotter(this.fs, this.repo).snapshot(doc.loc, doc.existing);
+      }
+      await this.storeContent(doc, plan.mode);
+      await this.repo.writeYaml(await paths.toc(doc.loc), doc.toc);
+      const meta = await this.metaOf(doc, plan, context, keepVersion);
+      await this.repo.writeYaml(await paths.meta(doc.loc), meta);
+      await this.removeReplaced(doc, plan.mode);
+      return { id: meta.id, kind: meta.kind, version: meta.version, sections: doc.toc.length, assets: doc.assets.length, warnings: doc.warnings };
+    } finally {
+      await release().catch(() => undefined);
     }
-    await this.storeContent(doc, plan.mode);
-    await this.repo.writeYaml(await paths.toc(doc.loc), doc.toc);
-    const meta = await this.metaOf(doc, plan, context, keepVersion);
-    await this.repo.writeYaml(await paths.meta(doc.loc), meta);
-    return { id: meta.id, kind: meta.kind, version: meta.version, sections: doc.toc.length, assets: doc.assets.length, warnings: doc.warnings };
   }
 
   /**
-   * Replaces the stored assets and Markdown of a document.
+   * Writes the new assets and Markdown of a document (the previous ones stay until the metadata is written).
    * @param doc - Planned document.
    * @param mode - Registration mode.
    * @returns When written.
    */
   private async storeContent(doc: PlannedDocument, mode: DocMode): Promise<void> {
     const { paths } = this.repo;
-    if (doc.existing !== undefined) {
-      await this.fs.remove(await paths.inOpp(doc.loc, 'assets', doc.loc.kind));
-    }
     for (const asset of doc.assets) {
       await this.fs.writeFileAtomic(await paths.asset(doc.loc, asset.path), asset.bytes);
     }
-    const target = await paths.doc(doc.loc);
-    await (mode === 'copy' ? this.fs.writeFileAtomic(target, doc.text) : this.fs.remove(target));
+    if (mode === 'copy') {
+      await this.fs.writeFileAtomic(await paths.doc(doc.loc), doc.text);
+    }
+  }
+
+  /**
+   * Removes what the replaced registration had and the new one no longer uses: assets that are no
+   * longer referenced, and the stored Markdown when the document is now a reference.
+   * @param doc - Planned document.
+   * @param mode - Registration mode.
+   * @returns When removed.
+   */
+  private async removeReplaced(doc: PlannedDocument, mode: DocMode): Promise<void> {
+    const { paths } = this.repo;
+    const kept = new Set(doc.assets.map((a) => a.path));
+    for (const old of doc.existing?.assets ?? []) {
+      if (!kept.has(old.path)) {
+        await this.fs.remove(await paths.asset(doc.loc, old.path));
+      }
+    }
+    if (mode === 'reference') {
+      await this.fs.remove(await paths.doc(doc.loc));
+    }
   }
 
   /**

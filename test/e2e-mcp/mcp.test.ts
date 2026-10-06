@@ -121,6 +121,10 @@ describe('warlog mcp from the packed tarball', () => {
     expect(await call('doc_get', { id })).not.toHaveProperty('changed_since_registration');
     writeFileSync(file, '# D\n\n## One\n\n## Two\n');
     expect(await call('doc_get', { id })).toMatchObject({ changed_since_registration: true });
+    expect(await call('doc_get', { id })).toMatchObject({ changed_since_registration: true });
+    expect(await call('doctor', {})).toMatchObject({ document_references: [{ id, path: 'docs/specs/core/ref/design.md', status: 'changed' }] });
+    await call('doc_import', { path: 'docs/specs/core/ref/design.md', mode: 'reference' });
+    expect(await call('doc_get', { id })).not.toHaveProperty('changed_since_registration');
     expect(await call('doctor', {})).toMatchObject({ document_references: [] });
     const tools = (await session2.client.listTools()).tools.map((t) => t.name);
     expect(tools).toEqual(expect.arrayContaining(['doc_import', 'doc_get', 'doc_toc', 'doc_search', 'doc_list', 'doc_history', 'doc_versions', 'doc_export', 'doc_epic_list', 'opportunity_list']));
