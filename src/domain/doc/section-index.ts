@@ -3,6 +3,7 @@
  * and the byte range of every section (heading line up to the next heading of the same or a
  * higher level, so a section includes its subsections).
  */
+import { isWidePunctuation } from '../../core/security/char-classes.ts';
 import type { Heading } from './markdown-scanner.ts';
 
 /** One entry of the section index. */
@@ -19,17 +20,6 @@ export interface TocEntry {
   readonly byte_end: number;
   /** Size of the section in bytes. */
   readonly bytes: number;
-}
-
-/**
- * Tells whether a code point is punctuation or a symbol outside ASCII (dropped from anchors):
- * Latin-1 punctuation, general punctuation to dingbats, CJK and full-width punctuation, emoji.
- * @param cp - Code point.
- * @returns `true` when dropped.
- */
-function isWidePunctuation(cp: number): boolean {
-  const dropped: readonly (readonly [number, number])[] = [[0x80, 0xa9], [0xab, 0xb4], [0xb6, 0xb9], [0xbb, 0xbf], [0x2000, 0x2bff], [0x3000, 0x303f], [0xfe30, 0xfe6f], [0xff00, 0xff0f], [0xff1a, 0xff20], [0xff3b, 0xff40], [0xff5b, 0xff65], [0x1f000, 0x1faff]];
-  return dropped.some(([from, to]) => cp >= from && cp <= to);
 }
 
 /**
