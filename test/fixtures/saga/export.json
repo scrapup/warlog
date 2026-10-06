@@ -1,0 +1,108 @@
+{
+  "format_version": "1.3",
+  "exported_at": "2026-10-05T00:39:47.442Z",
+  "project": {
+    "name": "parity",
+    "description": "saga parity",
+    "status": "active",
+    "tags": [],
+    "metadata": {},
+    "epics": [
+      {
+        "_original_id": 1,
+        "name": "E1",
+        "description": null,
+        "status": "planned",
+        "priority": "high",
+        "sort_order": 0,
+        "branch": null,
+        "tags": [],
+        "metadata": {},
+        "tasks": [
+          {
+            "_original_id": 1,
+            "title": "T1",
+            "description": null,
+            "status": "done",
+            "priority": "medium",
+            "sort_order": 0,
+            "assigned_to": null,
+            "estimated_hours": null,
+            "actual_hours": null,
+            "due_date": null,
+            "source_ref": null,
+            "description_locked": 0,
+            "tags": [],
+            "metadata": {},
+            "depends_on": [],
+            "subtasks": [],
+            "comments": []
+          },
+          {
+            "_original_id": 2,
+            "title": "T2",
+            "description": null,
+            "status": "done",
+            "priority": "medium",
+            "sort_order": 0,
+            "assigned_to": null,
+            "estimated_hours": null,
+            "actual_hours": null,
+            "due_date": null,
+            "source_ref": null,
+            "description_locked": 0,
+            "tags": [],
+            "metadata": {},
+            "depends_on": [
+              1
+            ],
+            "subtasks": [],
+            "comments": []
+          },
+          {
+            "_original_id": 3,
+            "title": "T3",
+            "description": null,
+            "status": "todo",
+            "priority": "critical",
+            "sort_order": 0,
+            "assigned_to": null,
+            "estimated_hours": null,
+            "actual_hours": null,
+            "due_date": null,
+            "source_ref": null,
+            "description_locked": 0,
+            "tags": [],
+            "metadata": {},
+            "depends_on": [
+              1,
+              2
+            ],
+            "subtasks": [],
+            "comments": []
+          },
+          {
+            "_original_id": 4,
+            "title": "T4",
+            "description": null,
+            "status": "todo",
+            "priority": "medium",
+            "sort_order": 0,
+            "assigned_to": null,
+            "estimated_hours": null,
+            "actual_hours": null,
+            "due_date": null,
+            "source_ref": null,
+            "description_locked": 0,
+            "tags": [],
+            "metadata": {},
+            "depends_on": [],
+            "subtasks": [],
+            "comments": []
+          }
+        ]
+      }
+    ]
+  },
+  "notes": []
+}

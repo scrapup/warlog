@@ -4,7 +4,7 @@
  */
 import { WarlogError } from '../errors/warlog-error.ts';
 import type { IndexSource, IndexedEntity, StoreView } from '../ports/store-view.port.ts';
-import type { EntityRef } from '../storage/entity-ref.ts';
+import type { EntityRef, EntityType } from '../storage/entity-ref.ts';
 
 export type { IndexSource } from '../ports/store-view.port.ts';
 
@@ -48,6 +48,36 @@ export class LiveIndexSource implements IndexSource {
   async entity(ref: EntityRef): Promise<IndexedEntity | undefined> {
     return entityFrom(this.view, ref);
   }
+
+  /**
+   * Finds an entity in the view.
+   * @param type - Entity type.
+   * @param id - Entity id.
+   * @returns The entity, when present with that type.
+   */
+  async lookup(type: EntityType, id: string): Promise<IndexedEntity | undefined> {
+    return entityOfType(this.view, type, id);
+  }
+
+  /**
+   * Does nothing: this view is fixed (tests, already built snapshots).
+   * @returns When done.
+   */
+  async refresh(): Promise<void> {
+    return undefined;
+  }
+}
+
+/**
+ * Selects an entity from a view by id when it has the expected type.
+ * @param view - View.
+ * @param type - Entity type.
+ * @param id - Entity id.
+ * @returns The entity, when present with that type.
+ */
+export function entityOfType(view: StoreView, type: EntityType, id: string): IndexedEntity | undefined {
+  const found = view.get(id);
+  return found?.type === type ? found : undefined;
 }
 
 /**
@@ -62,5 +92,7 @@ export function pointOnly(source: IndexSource, operation: string): IndexSource {
       throw new WarlogError('INTERNAL', `operation ${operation} is declared load: point but requested the full index`, { operation });
     },
     entity: (ref) => source.entity(ref),
+    lookup: (type, id) => source.lookup(type, id),
+    refresh: (path) => source.refresh(path),
   };
 }

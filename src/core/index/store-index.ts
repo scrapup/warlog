@@ -54,6 +54,8 @@ export class StoreIndex implements StoreView {
   private readonly idByPath = new Map<string, string>();
   /** Ids by type and project. */
   private readonly byTypeProject = new Map<string, Set<string>>();
+  /** Ids by type. */
+  private readonly byType = new Map<string, Set<string>>();
   /** Child ids by parent id. */
   private readonly children = new Map<string, Set<string>>();
   /** Source ids by link target. */
@@ -90,6 +92,15 @@ export class StoreIndex implements StoreView {
    */
   list(type: EntityType, projectId?: string): IndexedEntity[] {
     return this.resolve(this.byTypeProject.get(typeKey(type, projectId)));
+  }
+
+  /**
+   * Lists every entity of a type, whatever its project.
+   * @param type - Entity type.
+   * @returns The entities, ordered by id.
+   */
+  ofType(type: EntityType): IndexedEntity[] {
+    return this.resolve(this.byType.get(type));
   }
 
   /**
@@ -164,6 +175,7 @@ export class StoreIndex implements StoreView {
     this.entities.set(entity.id, entity);
     this.idByPath.set(entity.path, entity.id);
     addTo(this.byTypeProject, typeKey(entity.type, entity.projectId), entity.id);
+    addTo(this.byType, entity.type, entity.id);
     parentsOf(entity).forEach((parent) => addTo(this.children, parent, entity.id));
     linksOf(entity).forEach((link) => addTo(this.backlinks, link.target, entity.id));
   }
@@ -230,6 +242,7 @@ export class StoreIndex implements StoreView {
     }
     this.entities.delete(entity.id);
     removeFrom(this.byTypeProject, typeKey(entity.type, entity.projectId), entity.id);
+    removeFrom(this.byType, entity.type, entity.id);
     parentsOf(entity).forEach((parent) => removeFrom(this.children, parent, entity.id));
     linksOf(entity).forEach((link) => removeFrom(this.backlinks, link.target, entity.id));
   }

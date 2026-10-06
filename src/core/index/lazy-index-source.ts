@@ -2,16 +2,21 @@
  * The command line's view (plan §3.7): point reads open only the entity's file; the full index is
  * built at most once per process, on the first `full()`.
  */
-import { relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { isUlid } from '../security/identifiers.ts';
 import type { WarlogError } from '../errors/warlog-error.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { IndexSource, IndexedEntity, StoreView } from '../ports/store-view.port.ts';
-import type { EntityRef } from '../storage/entity-ref.ts';
+import type { EntityRef, EntityType } from '../storage/entity-ref.ts';
 import type { EntityPaths } from '../storage/entity-paths.ts';
 import type { StoreRoots } from '../storage/store-roots.ts';
 import { loadStoreFile } from './file-loader.ts';
 import type { IndexBuilder } from './index-builder.ts';
-import { entityFrom } from './index-source.ts';
+import { entityFrom, entityOfType } from './index-source.ts';
+import type { StoreIndex } from './store-index.ts';
+
+/** Types found by probing each project directory (`projects/<id>/…`). */
+const PROJECT_TYPES: ReadonlySet<EntityType> = new Set<EntityType>(['epic', 'story', 'task', 'note']);
 
 /** Collaborators of {@link LazyIndexSource}. */
 export interface LazyIndexSourceDeps {
@@ -30,7 +35,7 @@ export class LazyIndexSource implements IndexSource {
   /** Collaborators. */
   private readonly deps: LazyIndexSourceDeps;
   /** The full index, once built. */
-  private built: Promise<StoreView> | undefined;
+  private built: Promise<StoreIndex> | undefined;
 
   /**
    * Creates the source.
@@ -45,6 +50,14 @@ export class LazyIndexSource implements IndexSource {
    * @returns The index.
    */
   async full(): Promise<StoreView> {
+    return this.index();
+  }
+
+  /**
+   * Builds the full index (once).
+   * @returns The mutable index.
+   */
+  private async index(): Promise<StoreIndex> {
     this.built ??= this.deps.builder.build(this.deps.roots).then((r) => r.index);
     return this.built;
   }
@@ -59,6 +72,70 @@ export class LazyIndexSource implements IndexSource {
     if (this.built !== undefined) {
       return entityFrom(await this.built, ref);
     }
+    return this.readOne(ref);
+  }
+
+  /**
+   * Finds an entity by id: from the full index when built, otherwise by probing its candidate
+   * files (project-scoped types in every project directory, project-less notes, global
+   * templates); other types need the full index.
+   * @param type - Entity type.
+   * @param id - Entity id.
+   * @returns The entity, when found with that type.
+   * @throws {WarlogError} `VALIDATION` for a malformed id.
+   */
+  async lookup(type: EntityType, id: string): Promise<IndexedEntity | undefined> {
+    if (this.built !== undefined || !(PROJECT_TYPES.has(type) || type === 'project' || type === 'template')) {
+      return entityOfType(await this.full(), type, id);
+    }
+    for (const ref of await this.candidates(type, id)) {
+      const found = await this.readOne(ref);
+      if (found !== undefined) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Applies a written file to the full index when it was built (point reads always read the disk).
+   * @param path - Absolute path written.
+   * @returns When applied.
+   */
+  async refresh(path: string): Promise<void> {
+    if (this.built !== undefined) {
+      await this.deps.builder.reload(await this.built, this.deps.roots, path);
+    }
+  }
+
+  /**
+   * Candidate locations of an entity whose project is unknown.
+   * @param type - Entity type (project, project-scoped type or template).
+   * @param id - Entity id.
+   * @returns References to probe, in order.
+   */
+  private async candidates(type: EntityType, id: string): Promise<EntityRef[]> {
+    if (type === 'template') {
+      return [{ type, id, scope: 'global' }];
+    }
+    if (this.deps.roots.repository === undefined) {
+      return [];
+    }
+    if (type === 'project') {
+      return [{ type, id, scope: 'repo', projectId: id }];
+    }
+    const projects = await this.deps.fs.readDir(join(this.deps.paths.rootOf('repo'), 'projects'));
+    const refs: EntityRef[] = projects.filter((p) => isUlid(p)).map((projectId) => ({ type, id, scope: 'repo', projectId }));
+    return type === 'note' ? [...refs, { type, id, scope: 'repo' }] : refs;
+  }
+
+  /**
+   * Reads one entity file.
+   * @param ref - Entity reference.
+   * @returns The entity, or `undefined` when missing, invalid, a link, too large or of another type.
+   * @throws {WarlogError} `NO_REPO_CONTEXT` / `VALIDATION` for an invalid reference.
+   */
+  private async readOne(ref: EntityRef): Promise<IndexedEntity | undefined> {
     const path = await this.deps.paths.pathFor(ref);
     const root = this.deps.paths.rootOf(ref.scope);
     const file = { root: ref.scope, path, relative: relative(root, path).split(sep).join('/') };

@@ -1,0 +1,149 @@
+{
+  "saga_version": "1.19.0",
+  "results": [
+    {
+      "step": "project_create",
+      "observation": {
+        "name": "parity",
+        "status": "active",
+        "description": "saga parity"
+      }
+    },
+    {
+      "step": "epic_create",
+      "observation": {
+        "name": "E1",
+        "status": "planned",
+        "priority": "high"
+      }
+    },
+    {
+      "step": "task_create T1",
+      "observation": {
+        "title": "T1",
+        "status": "todo",
+        "priority": "medium"
+      }
+    },
+    {
+      "step": "task_create T2 depends on T1",
+      "observation": {
+        "title": "T2",
+        "status": "blocked"
+      }
+    },
+    {
+      "step": "task_create T3 depends on T1, T2",
+      "observation": {
+        "title": "T3",
+        "status": "blocked",
+        "priority": "critical"
+      }
+    },
+    {
+      "step": "next before work",
+      "observation": "T1"
+    },
+    {
+      "step": "T1 in progress",
+      "observation": {
+        "T1": "in_progress",
+        "T2": "blocked",
+        "T3": "blocked"
+      }
+    },
+    {
+      "step": "T1 done releases T2 only",
+      "observation": {
+        "T1": "done",
+        "T2": "todo",
+        "T3": "blocked"
+      }
+    },
+    {
+      "step": "next after T1",
+      "observation": "T2"
+    },
+    {
+      "step": "T2 done releases T3",
+      "observation": {
+        "T2": "done",
+        "T3": "todo"
+      }
+    },
+    {
+      "step": "task_get T3 dependencies",
+      "observation": {
+        "depends_on": [
+          [
+            "T1",
+            "done"
+          ],
+          [
+            "T2",
+            "done"
+          ]
+        ],
+        "dependents": 0
+      }
+    },
+    {
+      "step": "task_update cycle",
+      "observation": "error"
+    },
+    {
+      "step": "task_create T4",
+      "observation": {
+        "title": "T4",
+        "status": "todo"
+      }
+    },
+    {
+      "step": "task_delete started task",
+      "observation": "error"
+    },
+    {
+      "step": "after soft delete",
+      "observation": {
+        "live": [
+          "T1",
+          "T2",
+          "T3"
+        ],
+        "with_deleted": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      }
+    },
+    {
+      "step": "after restore",
+      "observation": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ]
+    },
+    {
+      "step": "epic_list counts",
+      "observation": [
+        {
+          "name": "E1",
+          "task_count": 4,
+          "done_count": 2,
+          "blocked_count": 0
+        }
+      ]
+    },
+    {
+      "step": "session diff",
+      "observation": {
+        "created": 6,
+        "deleted": 1
+      }
+    }
+  ]
+}

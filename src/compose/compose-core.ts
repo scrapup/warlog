@@ -33,6 +33,7 @@ import { PathGuard } from '../core/security/path-guard.ts';
 import { isPlainRecord } from '../core/security/plain-record.ts';
 import { SecretGuard } from '../core/security/secret-guard.ts';
 import { ActivityLog } from '../core/storage/activity-log.ts';
+import { entityStoreFactory } from '../core/storage/entity-store.ts';
 import { StoreRootsResolver } from '../core/storage/store-roots.ts';
 import { productOperations } from '../domain/operations.ts';
 import type { OperationsFactory } from '../domain/operations.ts';
@@ -142,7 +143,7 @@ export function composeCore(options: ComposeOptions = {}): Core {
     machine,
     indexes: (roots, request) => indexes.sourceFor(roots, request.load, request.operation),
   });
-  const registry = new OperationRegistry(operations({ fs, logger }));
+  const registry = new OperationRegistry(operations({ fs, logger, entities: entityStoreFactory(fs, guard) }));
   const redactions = staticRedactions(env);
   const behaviors = buildPipeline({ logger, redactions, contexts, secretGuard: new SecretGuard(), activity: new ActivityLog({ fs, clock, machine, guard, logger }) });
   /**
