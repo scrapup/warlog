@@ -25,6 +25,43 @@ function sysError(code: string): Error {
   return Object.assign(new Error(code), { code });
 }
 
+describe('NodeFileSystem bytes', () => {
+  it('[WL-41] round-trips non-UTF-8 bytes through an atomic write and leaves no temporary file', async () => {
+    const fs = new NodeFileSystem();
+    const bytes = Uint8Array.from([0, 255, 128, 10, 13]);
+    await fs.writeFileAtomic(join(dir, 'a.bin'), bytes);
+    expect(await fs.readBinary(join(dir, 'a.bin'), 5)).toEqual(bytes);
+    expect(readdirSync(dir)).toEqual(['a.bin']);
+  });
+
+  it.each([
+    [10, 10, true],
+    [11, 10, false],
+    [65_536, 65_536, true],
+    [65_537, 65_536, false],
+    [0, 4, true],
+  ])('[WL-48] a %i byte file read with a limit of %i is returned: %p', async (size, limit, returned) => {
+    writeFileSync(join(dir, 'f.bin'), Buffer.alloc(size, 7));
+    const read = await new NodeFileSystem().readBinary(join(dir, 'f.bin'), limit);
+    expect(read !== undefined).toBe(returned);
+    expect(read?.byteLength ?? size).toBe(size);
+  });
+
+  it('[WL-48] maps a missing file to NOT_FOUND and refuses to read through a final symbolic link', async () => {
+    const fs = new NodeFileSystem();
+    await expect(fs.readBinary(join(dir, 'missing.bin'), 10)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    writeFileSync(join(dir, 'real.bin'), 'x');
+    try {
+      symlinkSync(join(dir, 'real.bin'), join(dir, 'link.bin'), 'file');
+    } catch {
+      return; // creating symbolic links needs a privilege on some Windows setups
+    }
+    if (process.platform !== 'win32') {
+      await expect(fs.readBinary(join(dir, 'link.bin'), 10)).rejects.toThrow();
+    }
+  });
+});
+
 describe('NodeFileSystem reads', () => {
   it('reads a file and maps a missing file to NOT_FOUND', async () => {
     writeFileSync(join(dir, 'a.md'), 'hello');

@@ -99,6 +99,17 @@ describe('EntityFileRepository', () => {
       return async () => Promise.reject(new Error('EPERM'));
     };
     await expect(store.repo.create(TASK, { title: 'a' })).resolves.toMatchObject({ data: { rev: 1 } });
+    expect(store.logger.events).toEqual([{ level: 'warn', event: 'lock.release_failed', fields: expect.objectContaining({ error_code: 'UNEXPECTED' }) }]);
+  });
+
+  it('[WL-41] refuses to write an entity above 2 MiB and to read one that is above it', async () => {
+    const store = memoryStore();
+    await expect(store.repo.create(TASK, { title: 'a' }, 'x'.repeat(2 * 1024 * 1024 + 1))).rejects.toMatchObject({ code: 'VALIDATION', details: { reason: 'too_large' } });
+    const created = await store.repo.create(TASK, { title: 'a' });
+    const path = [...store.fs.files.keys()][0] ?? '';
+    store.fs.files.set(path, `${store.fs.files.get(path) ?? ''}${'x'.repeat(2 * 1024 * 1024)}`);
+    await expect(store.repo.read(TASK)).rejects.toMatchObject({ code: 'INVALID_FILE', details: { reason: 'too_large' } });
+    expect(created.data['rev']).toBe(1);
   });
 
   it('[WL-41] leaves the stored entity intact when the write fails', async () => {

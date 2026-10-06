@@ -8,7 +8,7 @@ import { WarlogError } from '../errors/warlog-error.ts';
 import type { FileStat, FileSystem, ReadDirOptions, ReleaseLock, TreeEntry } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
 import { acquireFileLock, codeOf } from './node-file-lock.ts';
-import { listTreeAt, readBounded, statWith } from './node-file-reads.ts';
+import { listTreeAt, readBounded, readBoundedBytes, statWith } from './node-file-reads.ts';
 
 /** Tunables of {@link NodeFileSystem} (defaults suit production; tests shorten them). */
 export interface NodeFileSystemOptions {
@@ -90,7 +90,7 @@ export class NodeFileSystem implements FileSystem {
   }
 
   /**
-   * Reads a file as bytes.
+   * Reads a file as bytes, refusing a final symbolic link and enforcing the limit while reading.
    * @param path - File path.
    * @param maxBytes - Size limit.
    * @returns The content, or `undefined` above the limit.
@@ -98,8 +98,8 @@ export class NodeFileSystem implements FileSystem {
    */
   async readBinary(path: string, maxBytes: number): Promise<Uint8Array | undefined> {
     try {
-      const stat = await fs.stat(path);
-      return stat.size > maxBytes ? undefined : new Uint8Array(await fs.readFile(path));
+      const bytes = await readBoundedBytes(path, maxBytes);
+      return bytes === undefined ? undefined : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     } catch (error: unknown) {
       throw this.mapMissing(error, path);
     }

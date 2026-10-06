@@ -3,14 +3,27 @@
  * atomic writes, optimistic concurrency by `rev` under a short exclusive lock. Timestamps are
  * recorded for sorting and history only, never for conflict detection.
  */
+import { basename } from 'node:path';
+import { errorFields } from '../errors/error-fields.ts';
 import { WarlogError, isWarlogError } from '../errors/warlog-error.ts';
 import type { Clock } from '../ports/clock.port.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
+import type { Logger } from '../ports/logger.port.ts';
 import type { MachineIdProvider } from '../ports/machine-id.port.ts';
 import type { EntityPaths } from './entity-paths.ts';
 import type { EntityRecord, EntityRef } from './entity-ref.ts';
 import { DELETION_FIELDS, MANAGED_FIELDS } from './entity-ref.ts';
 import { parseFrontMatter, stringifyFrontMatter } from './front-matter-codec.ts';
+
+/**
+ * Tells whether an error says a file does not exist (a raw system error from a bounded read, or
+ * the stable error of the file system port).
+ * @param error - Caught value.
+ * @returns `true` for a missing file.
+ */
+function isMissingFile(error: unknown): boolean {
+  return isWarlogError(error, 'NOT_FOUND') || (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT');
+}
 
 /** Collaborators of {@link EntityFileRepository}. */
 export interface EntityFileRepositoryDeps {
@@ -22,7 +35,12 @@ export interface EntityFileRepositoryDeps {
   readonly clock: Clock;
   /** Machine id of the writer. */
   readonly machine: MachineIdProvider;
+  /** Logger for failures that must not change the outcome (codes only). */
+  readonly logger?: Logger;
 }
+
+/** Largest entity file read or written; the index refuses larger files, so they would vanish from it. */
+export const MAX_ENTITY_BYTES = 2 * 1024 * 1024;
 
 /** Changes applied by {@link EntityFileRepository.update}. */
 export interface EntityChange {
@@ -189,10 +207,16 @@ export class EntityFileRepository {
    * @param path - Entity file path.
    * @param ref - Expected reference.
    * @returns The record.
-   * @throws {WarlogError} `INVALID_FILE` when id, type or rev are invalid.
+   * @throws {WarlogError} `INVALID_FILE` when id, type or rev are invalid or the file is too large.
    */
   private async readAt(path: string, ref: EntityRef): Promise<EntityRecord> {
-    const doc = parseFrontMatter(await this.deps.fs.readFile(path), path);
+    const text = await this.deps.fs.readFileBounded(path, MAX_ENTITY_BYTES).catch((error: unknown) => {
+      throw isMissingFile(error) ? new WarlogError('NOT_FOUND', `${basename(path)} not found`, { file: basename(path) }) : error;
+    });
+    if (text === undefined) {
+      throw new WarlogError('INVALID_FILE', `${ref.type} ${ref.id}: larger than 2 MiB`, { reason: 'too_large', id: ref.id });
+    }
+    const doc = parseFrontMatter(text, path);
     const rev = doc.data['rev'];
     const revOk = typeof rev === 'number' && Number.isSafeInteger(rev) && rev >= 1;
     if (doc.data['id'] !== ref.id || doc.data['type'] !== ref.type || !revOk) {
@@ -212,7 +236,7 @@ export class EntityFileRepository {
     try {
       return await section();
     } finally {
-      await release().catch(() => undefined);
+      await release().catch((error: unknown) => this.deps.logger?.log('warn', 'lock.release_failed', { ...errorFields(error) }));
     }
   }
 
@@ -222,10 +246,13 @@ export class EntityFileRepository {
    * @param path - Entity file path.
    * @param record - Record to write.
    * @returns The record as stored (undefined fields dropped).
-   * @throws {WarlogError} `VALIDATION` when the content would be unreadable.
+   * @throws {WarlogError} `VALIDATION` when the content would be unreadable or exceeds 2 MiB.
    */
   private async write(path: string, record: EntityRecord): Promise<EntityRecord> {
     const text = stringifyFrontMatter(record);
+    if (Buffer.byteLength(text) > MAX_ENTITY_BYTES) {
+      throw new WarlogError('VALIDATION', 'entity is larger than the 2 MiB limit', { reason: 'too_large' });
+    }
     let stored: EntityRecord;
     try {
       stored = parseFrontMatter(text, path);
