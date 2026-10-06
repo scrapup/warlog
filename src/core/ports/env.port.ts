@@ -16,4 +16,14 @@ export interface Env {
    * @returns Absolute path.
    */
   cwd(): string;
+  /**
+   * Returns the operating system (`darwin`, `linux`, `win32`, …).
+   * @returns The platform name.
+   */
+  platform(): string;
+  /**
+   * Returns the Node.js version.
+   * @returns Version text (`22.22.2`).
+   */
+  nodeVersion(): string;
 }

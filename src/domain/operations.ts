@@ -21,6 +21,17 @@ import { noteListOperation } from './note/note-list.operation.ts';
 import { noteSearchOperation } from './note/note-search.operation.ts';
 import { noteDeleteOperation } from './note/note-delete.operation.ts';
 import { noteRestoreOperation } from './note/note-restore.operation.ts';
+import { memorySaveOperation } from './memory/memory-save.operation.ts';
+import { memoryGetOperation } from './memory/memory-get.operation.ts';
+import { memoryListOperation } from './memory/memory-list.operation.ts';
+import { memoryRecallOperation } from './memory/memory-recall.operation.ts';
+import { memoryReviewOperation } from './memory/memory-review.operation.ts';
+import { memorySupersedeOperation } from './memory/memory-supersede.operation.ts';
+import { memoryArchiveOperation, memoryMarkStaleOperation } from './memory/memory-status.operation.ts';
+import { commandRecordOperation } from './playbook/command-record.operation.ts';
+import { issueResolveOperation } from './playbook/issue-resolve.operation.ts';
+import { patternsForOperation } from './playbook/patterns-for.operation.ts';
+import { playbookOperation } from './playbook/playbook.operation.ts';
 import { projectCreateOperation } from './project/project-create.operation.ts';
 import { projectListOperation } from './project/project-list.operation.ts';
 import { projectUpdateOperation } from './project/project-update.operation.ts';
@@ -29,6 +40,7 @@ import { varGetOperation } from './var/var-get.operation.ts';
 import { varListOperation } from './var/var-list.operation.ts';
 import { varSetOperation } from './var/var-set.operation.ts';
 import { writerFactory } from './shared/writer-factory.ts';
+import type { WriterFactory } from './shared/writer-factory.ts';
 import { storyArchiveOperation } from './story/story-archive.operation.ts';
 import { storyCreateOperation } from './story/story-create.operation.ts';
 import { storyGetOperation } from './story/story-get.operation.ts';
@@ -77,14 +89,13 @@ export interface DomainDeps {
 export type OperationsFactory = (deps: DomainDeps) => OperationDefinition[];
 
 /**
- * Builds the product operations.
+ * Operations of the execution tracker (projects to comments, templates, queries, interchange).
  * @param deps - Domain collaborators.
- * @returns The registry content.
+ * @param writers - Writer factory.
+ * @returns The definitions.
  */
-export function productOperations(deps: DomainDeps): OperationDefinition[] {
-  const writers = writerFactory(deps.entities);
+function trackerOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
   return [
-    doctorOperation(deps.logger),
     trackerInitOperation(writers),
     trackerDashboardOperation(deps.fs),
     trackerNextOperation(),
@@ -105,6 +116,16 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     storyListOperation(),
     storyUpdateOperation(writers),
     storyArchiveOperation(writers),
+  ];
+}
+
+/**
+ * Task, subtask, note, comment and template operations.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function workOperations(writers: WriterFactory): OperationDefinition[] {
+  return [
     taskCreateOperation(writers),
     taskGetOperation(),
     taskListOperation(),
@@ -132,9 +153,42 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     templateUpdateOperation(writers),
     templateDeleteOperation(writers),
     templateApplyOperation(writers),
+  ];
+}
+
+/**
+ * Variable and memory operations.
+ * @param deps - Domain collaborators.
+ * @param writers - Writer factory.
+ * @returns The definitions.
+ */
+function knowledgeOperations(deps: DomainDeps, writers: WriterFactory): OperationDefinition[] {
+  return [
     varSetOperation(deps.vars),
     varGetOperation(deps.vars),
     varListOperation(),
     varDeleteOperation(deps.vars),
+    memorySaveOperation(writers),
+    memoryGetOperation(),
+    memoryListOperation(),
+    memoryRecallOperation(),
+    memoryReviewOperation(deps.fs),
+    memorySupersedeOperation(writers),
+    memoryMarkStaleOperation(writers),
+    memoryArchiveOperation(writers),
+    commandRecordOperation(deps.fs, writers),
+    issueResolveOperation(writers),
+    playbookOperation(deps.fs),
+    patternsForOperation(),
   ];
+}
+
+/**
+ * Builds the product operations.
+ * @param deps - Domain collaborators.
+ * @returns The registry content.
+ */
+export function productOperations(deps: DomainDeps): OperationDefinition[] {
+  const writers = writerFactory(deps.entities);
+  return [doctorOperation(deps.logger), ...trackerOperations(deps, writers), ...workOperations(writers), ...knowledgeOperations(deps, writers)];
 }

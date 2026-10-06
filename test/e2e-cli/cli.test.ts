@@ -110,3 +110,31 @@ describe('warlog variables from the packed tarball', () => {
     }
   }, 120_000);
 });
+
+describe('warlog memory and playbook from the packed tarball', () => {
+  it('[WL-18] [WL-20] records a command outcome, then prints the playbook and the patterns for a file', () => {
+    const iso = isolatedEnv();
+    try {
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      const saved = run(['memory', 'save', '--kind', 'pattern', '--title', 'ports first', '--content', 'inject side effects', '--applies-to', 'src/**/*.ts', '--format', 'json']);
+      expect([saved.status, saved.stderr]).toEqual([0, '']);
+      const recorded = run(['command', 'record', '--cmd', 'npm run test:unit', '--outcome', 'fail', '--exit-code', '1', '--purpose', 'test', '--format', 'json']);
+      expect(recorded.status).toBe(0);
+      expect(JSON.parse(recorded.stdout)).toMatchObject({ created: true, status: 'fails' });
+      const book = run(['playbook', 'test', '--format', 'json']);
+      expect(book.status).toBe(0);
+      expect(JSON.parse(book.stdout)).toMatchObject({ topic: 'test', commands: { fails: [{ cmd: 'npm run test:unit', status: 'fails' }] } });
+      const patterns = run(['patterns-for', 'src/core/a.ts', '--format', 'json']);
+      expect(JSON.parse(patterns.stdout)).toMatchObject({ count: 1, patterns: [{ title: 'ports first' }] });
+      expect(run(['memory', 'recall', '--query', 'inject', '--format', 'json']).stdout).toContain('"count": 1');
+      expect(run(['memory', 'review']).stdout).toContain('unused_days: 90');
+      expect(run(['memory', 'get', '01J00000000000000000000099']).status).toBe(2);
+      const bad = run(['memory', 'save', '--kind', 'pattern', '--title', 't', '--content', 'c']);
+      expect(bad.status).toBe(3);
+      expect(bad.stderr).toContain('applies_to');
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+});

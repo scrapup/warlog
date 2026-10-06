@@ -54,6 +54,9 @@ npm install -g @scrapup/warlog
 warlog --help                          # help at every level: groups, operations, parameters
 warlog var set forge.parallel_executors --value false --scope repo   # typed; --value true keeps its type
 warlog var get forge.parallel_executors  # scalar printed raw; project > repository > global wins
+warlog memory recall --query "windows paths"   # lessons first: repository scope, matches, recency
+warlog playbook test                   # how to run/test here, commands that work or fail
+warlog patterns-for src/a.ts           # patterns that apply to a file
 warlog mcp                             # start the MCP server over stdio
 ```
 

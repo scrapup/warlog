@@ -11,6 +11,7 @@ import type { OperationHandler } from '../../core/mediator/operation-definition.
 import type { OperationResult } from '../../core/mediator/operation-result.ts';
 import type { Logger } from '../../core/ports/logger.port.ts';
 import type { FileProblem, RootKind, StoreView } from '../../core/ports/store-view.port.ts';
+import { MAX_UNUSED_DAYS, unusedMemories } from '../memory/review-candidates.ts';
 
 /** Age after which a temporary file is reported (1 hour). */
 export const STALE_TEMP_MS = 3_600_000;
@@ -75,9 +76,10 @@ const PROBES: Readonly<Record<string, Probe>> = {
       .filter((p) => p.reason !== 'merge_conflict')
       .map((p) => ({ ...located(p), reason: p.reason })),
   pending_links: ({ view }) => view.pendingLinks().map((l) => ({ from: l.from, rel: l.rel, target: l.target })),
-  // Checked by US-102 (document references) and US-99 (memory review).
+  // Checked by US-102.
   document_references: () => NOT_CHECKED,
-  memories_due_for_review: () => NOT_CHECKED,
+  memories_due_for_review: ({ view, now }) =>
+    unusedMemories(view, view.activity.usage, now, MAX_UNUSED_DAYS).map((m) => ({ id: m.id, title: String(m.record.data['title'] ?? ''), reason: `not recalled in ${MAX_UNUSED_DAYS} days` })),
   stale_temp_files: ({ view, now }) =>
     view.excluded
       .tempFiles()
