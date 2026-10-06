@@ -2,7 +2,7 @@
  * Command-line input assembly (WL-36): file < `--json-input` < flags, then output options.
  * Validation issues on fields that came from the file are located as `file:line:col field: message`.
  */
-import { WarlogError } from '../../core/errors/warlog-error.ts';
+import { WarlogError, isWarlogError } from '../../core/errors/warlog-error.ts';
 import type { ValidationIssue } from '../../core/mediator/behaviors/validation.behavior.ts';
 import { isPlainRecord } from '../../core/security/plain-record.ts';
 import { convertFlagValue } from './flag-mapper.ts';
@@ -59,6 +59,9 @@ async function loadFile(source: string, bodyKey: string, reader: InputReader): P
   try {
     text = source === '-' ? await reader.readStdin() : await reader.readFile(source);
   } catch (error: unknown) {
+    if (isWarlogError(error, 'INVALID_FILE')) {
+      throw new WarlogError('INVALID_FILE', `${error.message} (${source})`, { ...error.details, file: source }, { cause: error });
+    }
     throw new WarlogError('INVALID_FILE', `cannot read input file ${source}`, { file: source, reason: 'unreadable' }, { cause: error });
   }
   return parseFileInput(text, source, bodyKey);

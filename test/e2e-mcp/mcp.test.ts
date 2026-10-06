@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { productOperations } from '../../src/domain/operations.ts';
@@ -131,6 +131,36 @@ describe('warlog mcp from the packed tarball', () => {
     await session2.close();
     repoEnv.dispose();
   }, 60_000);
+
+  it('[WL-06] [WL-40] a real server ends with exit 0 and a codes-only trace on SIGTERM, and also when its client closes standard input', async () => {
+    const env = isolatedEnv();
+    try {
+      const start = (): ReturnType<typeof spawn> => spawn(process.execPath, [installed?.bin ?? '', 'mcp'], { cwd: env.cwd, env: { ...env.env, WARLOG_LOG_LEVEL: 'info' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      const finish = (child: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }> =>
+        new Promise((resolve) => {
+          let stderr = '';
+          child.stderr?.on('data', (d: Buffer) => {
+            stderr += d.toString();
+          });
+          child.on('close', (code, signal) => resolve({ code, signal, stderr }));
+        });
+      const byTerm = start();
+      const done = finish(byTerm);
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      byTerm.kill('SIGTERM');
+      const term = await done;
+      expect([term.code, term.signal]).toEqual([0, null]);
+      expect(term.stderr).toContain('"event":"mcp.shutdown"');
+      expect(term.stderr).not.toContain(env.cwd);
+      const byEof = start();
+      const eof = finish(byEof);
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      byEof.stdin?.end();
+      expect((await eof).code).toBe(0);
+    } finally {
+      env.dispose();
+    }
+  }, 30_000);
 
   it('[WL-35] writes nothing but MCP frames on standard output and nothing on standard error', async () => {
     const current = mcp();

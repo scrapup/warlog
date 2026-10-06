@@ -5,7 +5,6 @@
 import type { IndexedEntity } from '../../core/ports/store-view.port.ts';
 import { compareCodeUnits } from '../../core/security/compare.ts';
 import type { EntityRecord } from '../../core/storage/entity-ref.ts';
-import type { Priority, TaskStatus } from './fields.ts';
 
 /** A result row. */
 export type Row = Record<string, unknown>;
@@ -53,10 +52,21 @@ export function omit(row: Readonly<Row>, field: string): Row {
 }
 
 /** Rank of each priority (critical first). */
-const PRIORITY_RANK: Readonly<Record<Priority, number>> = { critical: 0, high: 1, medium: 2, low: 3 };
+const PRIORITY_RANK: Readonly<Record<string, number>> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 /** Rank of each task status (actionable first). */
-const STATUS_RANK: Readonly<Record<TaskStatus, number>> = { blocked: 0, in_progress: 1, review: 2, todo: 3, done: 4 };
+const STATUS_RANK: Readonly<Record<string, number>> = { blocked: 0, in_progress: 1, review: 2, todo: 3, done: 4 };
+
+/**
+ * Looks a value up in a rank table by its own keys only: a hand-edited `constructor` or `toString`
+ * is an unknown value, not a function from the prototype.
+ * @param table - Rank table.
+ * @param value - Value read from a file.
+ * @returns The rank, or `undefined` for an unknown value.
+ */
+function ownRank(table: Readonly<Record<string, number>>, value: unknown): number | undefined {
+  return typeof value === 'string' && Object.hasOwn(table, value) ? table[value] : undefined;
+}
 
 /**
  * Rank of an entity's priority.
@@ -64,7 +74,7 @@ const STATUS_RANK: Readonly<Record<TaskStatus, number>> = { blocked: 0, in_progr
  * @returns 0 (critical) … 3 (low); unknown values last.
  */
 export function priorityRank(entity: IndexedEntity): number {
-  return PRIORITY_RANK[entity.record.data['priority'] as Priority] ?? 4;
+  return ownRank(PRIORITY_RANK, entity.record.data['priority']) ?? 4;
 }
 
 /**
@@ -73,7 +83,7 @@ export function priorityRank(entity: IndexedEntity): number {
  * @returns 0 (blocked) … 4 (done); unknown values last.
  */
 export function statusRank(entity: IndexedEntity): number {
-  return STATUS_RANK[entity.record.data['status'] as TaskStatus] ?? 5;
+  return ownRank(STATUS_RANK, entity.record.data['status']) ?? 5;
 }
 
 /**
