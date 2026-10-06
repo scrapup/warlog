@@ -135,28 +135,43 @@ describe('warlog mcp from the packed tarball', () => {
   it('[WL-06] [WL-40] a real server ends with exit 0 and a codes-only trace on SIGTERM, and also when its client closes standard input', async () => {
     const env = isolatedEnv();
     try {
-      const start = (): ReturnType<typeof spawn> => spawn(process.execPath, [installed?.bin ?? '', 'mcp'], { cwd: env.cwd, env: { ...env.env, WARLOG_LOG_LEVEL: 'info' }, stdio: ['pipe', 'pipe', 'pipe'] });
-      const finish = (child: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }> =>
-        new Promise((resolve) => {
-          let stderr = '';
-          child.stderr?.on('data', (d: Buffer) => {
-            stderr += d.toString();
-          });
+      const start = (): ReturnType<typeof spawn> => spawn(process.execPath, [installed?.bin ?? '', 'mcp'], { cwd: env.cwd, env: { ...env.env, WARLOG_LOG_LEVEL: 'debug' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      const finish = (child: ReturnType<typeof spawn>): { ready: Promise<void>; done: Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }> } => {
+        let stderr = '';
+        let onReady = (): void => undefined;
+        const ready = new Promise<void>((resolve) => {
+          onReady = resolve;
+        });
+        child.stderr?.on('data', (d: Buffer) => {
+          stderr += d.toString();
+          if (stderr.includes('"event":"mcp.started"')) {
+            onReady();
+          }
+        });
+        const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }>((resolve) => {
           child.on('close', (code, signal) => resolve({ code, signal, stderr }));
         });
+        return { ready, done };
+      };
+      // Signals are sent once the server reports it started (a fixed sleep raced slow runners); the
+      // short pause lets the lifecycle handlers, installed right after the start, register.
+      const settled = async (ready: Promise<void>): Promise<void> => {
+        await ready;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      };
       const byTerm = start();
-      const done = finish(byTerm);
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const term$ = finish(byTerm);
+      await settled(term$.ready);
       byTerm.kill('SIGTERM');
-      const term = await done;
+      const term = await term$.done;
       expect([term.code, term.signal]).toEqual([0, null]);
       expect(term.stderr).toContain('"event":"mcp.shutdown"');
       expect(term.stderr).not.toContain(env.cwd);
       const byEof = start();
-      const eof = finish(byEof);
-      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      const eof$ = finish(byEof);
+      await settled(eof$.ready);
       byEof.stdin?.end();
-      expect((await eof).code).toBe(0);
+      expect((await eof$.done).code).toBe(0);
     } finally {
       env.dispose();
     }
