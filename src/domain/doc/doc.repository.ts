@@ -3,6 +3,7 @@
  * small front-matter files, documents as Markdown with `.meta` beside them. The document registry
  * is outside the entity index (it skips `docs/`), so listings read the folders directly.
  */
+import { z } from 'zod';
 import { WarlogError, isWarlogError } from '../../core/errors/warlog-error.ts';
 import type { Clock } from '../../core/ports/clock.port.ts';
 import type { FileSystem } from '../../core/ports/file-system.port.ts';
@@ -11,11 +12,10 @@ import type { MachineIdProvider } from '../../core/ports/machine-id.port.ts';
 import { compareCodeUnits } from '../../core/security/compare.ts';
 import { isSlug } from '../../core/security/identifiers.ts';
 import type { PathGuard } from '../../core/security/path-guard.ts';
-import { isPlainRecord } from '../../core/security/plain-record.ts';
 import { parseFrontMatter, stringifyFrontMatter } from '../../core/storage/front-matter-codec.ts';
 import type { StoreRoots } from '../../core/storage/store-roots.ts';
 import { parseYaml, stringifyYaml } from '../../core/storage/yaml-codec.ts';
-import { DOC_KINDS } from './doc.schema.ts';
+import { DOCUMENT_META_SCHEMA, DOC_KINDS, TOC_ENTRY_SCHEMA } from './doc.schema.ts';
 import type { Category, DocArea, DocKind, DocLocation, DocumentMeta, FoundDocument } from './doc.schema.ts';
 import { DocPaths } from './doc-paths.ts';
 import type { TocEntry } from './section-index.ts';
@@ -81,6 +81,24 @@ export function docRepositoryFactory(fs: FileSystem, guard: PathGuard): DocRepos
  */
 export function isDocKind(text: string): text is DocKind {
   return (DOC_KINDS as readonly string[]).includes(text);
+}
+
+/**
+ * Checks a stored section index.
+ * @param data - Parsed YAML (`undefined` for a missing file).
+ * @param file - File it came from (for the error).
+ * @returns The entries (`[]` when there is no index).
+ * @throws {WarlogError} `INVALID_FILE` (`doc_toc`) when it is not a list of valid entries.
+ */
+export function parseToc(data: unknown, file: string): TocEntry[] {
+  if (data === undefined) {
+    return [];
+  }
+  const parsed = z.array(TOC_ENTRY_SCHEMA).safeParse(data);
+  if (!parsed.success) {
+    throw new WarlogError('INVALID_FILE', 'section index is invalid', { reason: 'doc_toc', file });
+  }
+  return parsed.data;
 }
 
 /** The document registry of one call. */
@@ -232,10 +250,12 @@ export class DocRepository {
     if (data === undefined) {
       return undefined;
     }
-    if (!isPlainRecord(data) || typeof data['id'] !== 'string' || data['kind'] !== loc.kind) {
+    const parsed = DOCUMENT_META_SCHEMA.safeParse(data);
+    if (!parsed.success || parsed.data.kind !== loc.kind) {
       throw new WarlogError('INVALID_FILE', `document metadata of ${loc.kind} is invalid`, { reason: 'doc_meta', file: path });
     }
-    return { assets: [], warnings: [], mode: 'copy', ...data } as unknown as DocumentMeta;
+    const { links, ...rest } = parsed.data;
+    return links === undefined ? rest : { ...rest, links };
   }
 
   /**
@@ -244,8 +264,8 @@ export class DocRepository {
    * @returns The entries (`[]` when missing).
    */
   async readToc(loc: DocLocation): Promise<TocEntry[]> {
-    const data = await this.readYaml(await this.paths.toc(loc));
-    return Array.isArray(data) ? (data as TocEntry[]) : [];
+    const path = await this.paths.toc(loc);
+    return parseToc(await this.readYaml(path), path);
   }
 
   /**

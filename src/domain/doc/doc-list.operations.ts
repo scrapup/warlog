@@ -185,7 +185,7 @@ export function docVersionsOperation(fs: FileSystem, docs: DocRepositoryFactory)
         const repo = docs(context);
         const found = await new DocReader(fs, repo).find(input.id);
         const root = await repo.paths.inOpp(found, 'versions', found.kind);
-        const numbers = (await fs.readDir(root)).map(Number).filter((n) => Number.isInteger(n) && n > 0).sort((a, b) => a - b);
+        const numbers = (await fs.readDir(root)).filter((name) => String(Number.parseInt(name, 10)) === name).map(Number).filter((n) => n > 0).sort((a, b) => a - b);
         const kept = await Promise.all(numbers.map(async (n) => ({ n, meta: await repo.readYaml(`${root}/${n}/meta.yaml`) as KeptMeta | undefined })));
         const rows = [...kept.map((k) => ({ version: k.n, current: false, updated_at: k.meta?.updated_at ?? '', bytes: k.meta?.bytes ?? 0 })), { version: found.meta.version, current: true, updated_at: found.meta.updated_at, bytes: found.meta.bytes }];
         return { kind: 'list', rows };

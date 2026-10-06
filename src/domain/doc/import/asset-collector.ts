@@ -15,6 +15,23 @@ import type { Replacement } from './link-rewriter.ts';
 /** Largest image or diagram source. */
 export const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 
+/** Extensions of files accepted as images or diagram sources. */
+const ASSET_EXTENSIONS: ReadonlySet<string> = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif', '.puml']);
+
+/**
+ * Why a file cannot be an image or a diagram source, from its path alone. The registry is stored
+ * in the repository, so only image and diagram files, and nothing hidden (`.env`, `.git/…`), may enter it.
+ * @param path - Normalized relative path.
+ * @returns A message, or `undefined` when acceptable.
+ */
+function kindProblem(path: string): string | undefined {
+  if (path.split('/').some((segment) => segment.startsWith('.'))) {
+    return 'hidden files and folders cannot be images';
+  }
+  const ext = posix.extname(path).toLowerCase();
+  return ASSET_EXTENSIONS.has(ext) ? undefined : `${ext === '' ? 'a file without extension' : ext} is not an image or diagram source (png, jpg, gif, webp, svg, bmp, ico, avif, puml)`;
+}
+
 /** An asset ready to be stored. */
 export interface CollectedAsset {
   /** Path relative to the source folder, `/`-separated. */
@@ -101,7 +118,7 @@ function pathPart(dest: string): string {
  * @returns A message, or `undefined` when acceptable.
  */
 function textProblem(dest: string): string | undefined {
-  const decoded = pathPart(decode(dest));
+  const decoded = decode(pathPart(dest));
   const normal = posix.normalize(decoded);
   if (decoded === '') {
     return 'empty image destination';
@@ -149,6 +166,10 @@ export class AssetCollector {
     if ((await this.fs.stat(real))?.isFile !== true) {
       return `${label}: ${path} is not a file`;
     }
+    const refused = kindProblem(path);
+    if (refused !== undefined) {
+      return `${label}: ${path}: ${refused}`;
+    }
     const bytes = await this.fs.readBinary(real, MAX_ASSET_BYTES);
     return bytes === undefined ? `${label}: ${path} is larger than 10 MB` : { path, bytes, sha256: sha256Hex(bytes) };
   }
@@ -180,7 +201,7 @@ export class AssetCollector {
         problems.push(`${label}: ${bad}`);
         continue;
       }
-      const path = posix.normalize(pathPart(decode(image.dest)));
+      const path = posix.normalize(decode(pathPart(image.dest)));
       const found = assets.get(path) ?? (await this.read(scope, path, label));
       if (typeof found === 'string') {
         problems.push(found);

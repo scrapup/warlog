@@ -3,6 +3,8 @@
  * headings and inline image links, skipping fenced code blocks and inline code spans. No regular
  * expressions: one pass over the text, a bounded amount of work per character.
  */
+import { bracketPairs, codeMask, indexWithin, runLength } from './inline-scan.ts';
+
 
 /** An ATX heading. */
 export interface Heading {
@@ -36,10 +38,18 @@ export interface MarkdownScan {
   readonly images: ImageLink[];
   /** Inline HTML `<img` tags outside code (not validated or rewritten). */
   readonly htmlImages: number;
+  /** Lines (1-based) whose image links were not scanned because the line is pathologically complex. */
+  readonly unscannedLines: number[];
 }
 
 /** Longest alt text or destination looked at, bounding the work per link. */
 const MAX_LINK_PART = 4_096;
+
+/** Work, per character of a line, its image links may cost before the rest of the line is left unscanned. */
+const LINE_WORK_PER_CHAR = 16;
+
+/** Work allowed on any line besides {@link LINE_WORK_PER_CHAR}. */
+const LINE_WORK_BASE = 16 * MAX_LINK_PART;
 
 /** An open fenced code block. */
 interface Fence {
@@ -47,21 +57,6 @@ interface Fence {
   readonly char: string;
   /** Length of the opening fence. */
   readonly length: number;
-}
-
-/**
- * Length of the run of a character at an index.
- * @param line - Text.
- * @param at - Index.
- * @param ch - Character.
- * @returns Number of consecutive occurrences.
- */
-function runAt(line: string, at: number, ch: string): number {
-  let n = 0;
-  while (line.charAt(at + n) === ch) {
-    n += 1;
-  }
-  return n;
 }
 
 /**
@@ -88,7 +83,7 @@ function openFence(line: string): Fence | undefined {
   if (char !== '`' && char !== '~') {
     return undefined;
   }
-  const length = runAt(line, at, char);
+  const length = runLength(line, at, char);
   return length >= 3 && !(char === '`' && line.indexOf('`', at + length) >= 0) ? { char, length } : undefined;
 }
 
@@ -100,7 +95,7 @@ function openFence(line: string): Fence | undefined {
  */
 function closesFence(line: string, fence: Fence): boolean {
   const at = indentOf(line);
-  return at >= 0 && line.charAt(at) === fence.char && runAt(line, at, fence.char) >= fence.length && line.slice(at + runAt(line, at, fence.char)).trim() === '';
+  return at >= 0 && line.charAt(at) === fence.char && runLength(line, at, fence.char) >= fence.length && line.slice(at + runLength(line, at, fence.char)).trim() === '';
 }
 
 /**
@@ -114,7 +109,7 @@ function headingOf(line: string, start: number): Heading | undefined {
   if (at < 0 || line.charAt(at) !== '#') {
     return undefined;
   }
-  const level = runAt(line, at, '#');
+  const level = runLength(line, at, '#');
   const after = line.charAt(at + level);
   if (level > 6 || (after !== '' && after !== ' ' && after !== '\t')) {
     return undefined;
@@ -136,78 +131,6 @@ function withoutClosing(title: string): string {
   return spaced ? title.slice(0, title.length - closing).trim() : title;
 }
 
-/**
- * Offsets of the characters of a line that are not inside inline code spans.
- * @param line - Line.
- * @returns A boolean per character: `true` when inside a code span.
- */
-function codeMask(line: string): boolean[] {
-  const mask = new Array<boolean>(line.length).fill(false);
-  let i = 0;
-  while (i < line.length) {
-    if (line.charAt(i) !== '`') {
-      i += 1;
-      continue;
-    }
-    const run = runAt(line, i, '`');
-    const close = findRun(line, i + run, run);
-    if (close < 0) {
-      i += run;
-      continue;
-    }
-    mask.fill(true, i, close + run);
-    i = close + run;
-  }
-  return mask;
-}
-
-/**
- * Index of the next backtick run of exactly a given length.
- * @param line - Line.
- * @param from - Where to start.
- * @param length - Run length.
- * @returns The index, or `-1`.
- */
-function findRun(line: string, from: number, length: number): number {
-  let i = from;
-  while (i < line.length) {
-    if (line.charAt(i) !== '`') {
-      i += 1;
-      continue;
-    }
-    const run = runAt(line, i, '`');
-    if (run === length) {
-      return i;
-    }
-    i += run;
-  }
-  return -1;
-}
-
-/**
- * Index of the `]` closing an alt text that starts after `![`.
- * @param line - Line.
- * @param from - Index after `![`.
- * @returns The index, or `-1` when unbalanced within {@link MAX_LINK_PART} characters.
- */
-function closeBracket(line: string, from: number): number {
-  let depth = 1;
-  for (let i = from; i < line.length && i - from <= MAX_LINK_PART; i += 1) {
-    const ch = line.charAt(i);
-    if (ch === '\\') {
-      i += 1;
-    } else if (ch === '[') {
-      depth += 1;
-    } else if (ch === ']') {
-      depth -= 1;
-      if (depth === 0) {
-        return i;
-      }
-    }
-  }
-  return -1;
-}
-
 /** Destination and title of a link after `](`. */
 interface Destination {
   /** Start of the destination text. */
@@ -225,8 +148,8 @@ interface Destination {
  * @returns The destination bounds, or `undefined`.
  */
 function angleDestination(line: string, open: number): Destination | undefined {
-  const close = line.indexOf('>', open + 1);
-  return close < 0 || line.slice(open + 1, close).includes('<') ? undefined : { start: open + 1, end: close, next: close + 1 };
+  const close = indexWithin(line, '>', open + 1, MAX_LINK_PART);
+  return close < 0 || indexWithin(line, '<', open + 1, close - open - 1) >= 0 ? undefined : { start: open + 1, end: close, next: close + 1 };
 }
 
 /**
@@ -287,7 +210,7 @@ function closeLink(line: string, from: number): number {
   let i = skipBlanks(line, from);
   const quote = line.charAt(i);
   if (quote === '"' || quote === "'" || quote === '(') {
-    const end = line.indexOf(quote === '(' ? ')' : quote, i + 1);
+    const end = indexWithin(line, quote === '(' ? ')' : quote, i + 1, MAX_LINK_PART);
     if (end < 0) {
       return -1;
     }
@@ -296,25 +219,43 @@ function closeLink(line: string, from: number): number {
   return line.charAt(i) === ')' ? i + 1 : -1;
 }
 
+/** Images of one line, and whether scanning stopped because the line is too complex. */
+interface LineImages {
+  /** Images found. */
+  readonly found: ImageLink[];
+  /** `true` when the work allowance of the line ran out. */
+  readonly exhausted: boolean;
+}
+
 /**
- * Inline images of one line.
+ * Inline images of one line. The work spent on a line is bounded (a few passes over it): once it
+ * is used up the rest of the line is reported as unscanned instead of costing quadratic time.
  * @param line - Line without its break.
  * @param start - Offset of the line in the text.
  * @param lineNo - 1-based line number.
  * @returns The images found outside inline code.
  */
-function imagesOf(line: string, start: number, lineNo: number): ImageLink[] {
-  const mask = line.includes('![') ? codeMask(line) : [];
+function imagesOf(line: string, start: number, lineNo: number): LineImages {
   const found: ImageLink[] = [];
   let at = line.indexOf('![');
+  if (at < 0) {
+    return { found, exhausted: false };
+  }
+  const mask = codeMask(line);
+  const pairs = bracketPairs(line);
+  let allowance = LINE_WORK_PER_CHAR * line.length + LINE_WORK_BASE;
   while (at >= 0) {
-    const next = tryImage(line, at, mask);
+    const next = tryImage(line, at, mask, pairs);
+    allowance -= next === undefined ? Math.min(line.length - at, 3 * MAX_LINK_PART) : next.dest.next - at;
+    if (allowance < 0) {
+      return { found, exhausted: true };
+    }
     if (next !== undefined) {
       found.push({ alt: line.slice(at + 2, next.altEnd), destStart: start + next.dest.start, destEnd: start + next.dest.end, dest: line.slice(next.dest.start, next.dest.end), line: lineNo });
     }
     at = line.indexOf('![', next === undefined ? at + 2 : next.dest.next);
   }
-  return found;
+  return { found, exhausted: false };
 }
 
 /** A parsed image link. */
@@ -326,18 +267,29 @@ interface ParsedImage {
 }
 
 /**
+ * Index of the `]` closing the alt text of an image, when `(` follows it and the alt text is of
+ * a reasonable length.
+ * @param line - Line.
+ * @param at - Index of `!`.
+ * @param pairs - Bracket pairs of the line.
+ * @returns The index, or `-1`.
+ */
+function altTextEnd(line: string, at: number, pairs: ReadonlyMap<number, number>): number {
+  const end = pairs.get(at + 1) ?? -1;
+  return end < 0 || end - at - 2 > MAX_LINK_PART || line.charAt(end + 1) !== '(' ? -1 : end;
+}
+
+/**
  * Parses the image link starting at `![`.
  * @param line - Line.
  * @param at - Index of `!`.
  * @param mask - Inline code mask of the line.
+ * @param pairs - Bracket pairs of the line.
  * @returns The parsed image, or `undefined` when it is not a valid inline image.
  */
-function tryImage(line: string, at: number, mask: readonly boolean[]): ParsedImage | undefined {
-  if (mask[at] === true || line.charAt(at - 1) === '\\') {
-    return undefined;
-  }
-  const altEnd = closeBracket(line, at + 2);
-  if (altEnd < 0 || line.charAt(altEnd + 1) !== '(') {
+function tryImage(line: string, at: number, mask: readonly boolean[], pairs: ReadonlyMap<number, number>): ParsedImage | undefined {
+  const altEnd = mask[at] === true || line.charAt(at - 1) === '\\' ? -1 : altTextEnd(line, at, pairs);
+  if (altEnd < 0) {
     return undefined;
   }
   const i = skipBlanks(line, altEnd + 2);
@@ -346,41 +298,62 @@ function tryImage(line: string, at: number, mask: readonly boolean[]): ParsedIma
   return dest === undefined || closed < 0 ? undefined : { altEnd, dest: { ...dest, next: closed } };
 }
 
+/** A scan being built. */
+interface ScanUnderway {
+  /** Headings so far. */
+  readonly headings: Heading[];
+  /** Images so far. */
+  readonly images: ImageLink[];
+  /** Unscanned lines so far. */
+  readonly unscannedLines: number[];
+  /** HTML images so far. */
+  htmlImages: number;
+}
+
+/**
+ * Adds what one line outside a fenced block holds: its heading, images and HTML images.
+ * @param scan - The scan being built (updated).
+ * @param line - Line without its break.
+ * @param start - Offset of the line in the text.
+ * @param lineNo - 1-based line number.
+ */
+function scanLine(scan: ScanUnderway, line: string, start: number, lineNo: number): void {
+  const heading = headingOf(line, start);
+  if (heading !== undefined) {
+    scan.headings.push(heading);
+  }
+  const lineImages = imagesOf(line, start, lineNo);
+  lineImages.found.forEach((image) => scan.images.push(image));
+  if (lineImages.exhausted) {
+    scan.unscannedLines.push(lineNo);
+  }
+  scan.htmlImages += line.toLowerCase().includes('<img ') ? 1 : 0;
+}
+
 /**
  * Scans a Markdown text for headings and inline images.
  * @param text - Markdown.
- * @returns Headings, images and the number of inline HTML images.
+ * @returns Headings, images, the number of inline HTML images and the lines left unscanned.
  */
 export function scanMarkdown(text: string): MarkdownScan {
-  const headings: Heading[] = [];
-  const images: ImageLink[] = [];
-  let htmlImages = 0;
+  const scan: ScanUnderway = { headings: [], images: [], unscannedLines: [], htmlImages: 0 };
   let fence: Fence | undefined;
   let start = 0;
   let lineNo = 0;
   while (start <= text.length) {
     const nl = text.indexOf('\n', start);
-    const end = nl < 0 ? text.length : nl;
-    const raw = text.slice(start, end);
+    const raw = text.slice(start, nl < 0 ? text.length : nl);
     const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
     lineNo += 1;
-    if (fence !== undefined) {
-      fence = closesFence(line, fence) ? undefined : fence;
-    } else {
-      fence = openFence(line);
-      if (fence === undefined) {
-        const heading = headingOf(line, start);
-        if (heading !== undefined) {
-          headings.push(heading);
-        }
-        images.push(...imagesOf(line, start, lineNo));
-        htmlImages += line.toLowerCase().includes('<img ') ? 1 : 0;
-      }
+    const inside = fence !== undefined;
+    fence = fence === undefined ? openFence(line) : closesFence(line, fence) ? undefined : fence;
+    if (!inside && fence === undefined) {
+      scanLine(scan, line, start, lineNo);
     }
     if (nl < 0) {
       break;
     }
     start = nl + 1;
   }
-  return { headings, images, htmlImages };
+  return scan;
 }
