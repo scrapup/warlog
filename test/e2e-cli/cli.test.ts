@@ -138,3 +138,34 @@ describe('warlog memory and playbook from the packed tarball', () => {
     }
   }, 120_000);
 });
+
+describe('warlog links and trace from the packed tarball', () => {
+  it('[WL-21] [WL-22] [WL-23] links a task to a spec, a commit and a tracker key, then traces them', () => {
+    const iso = isolatedEnv();
+    try {
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      const json = (args: string[]): Record<string, unknown> => {
+        const result = run([...args, '--format', 'json']);
+        expect([args.join(' '), result.status, result.stderr]).toEqual([args.join(' '), 0, '']);
+        return JSON.parse(result.stdout) as Record<string, unknown>;
+      };
+      const project = String(json(['project', 'create', '--name', 'p'])['id']);
+      const epic = String(json(['epic', 'create', '--project-id', project, '--name', 'E'])['id']);
+      const taskId = String(json(['task', 'create', '--epic-id', epic, '--title', 'Tokenize'])['id']);
+      json(['link', 'add', '--id', taskId, '--rel', 'implements', '--target', 'spec:docs/spec.md#us-1']);
+      json(['link', 'add', '--id', taskId, '--rel', 'commit', '--target', 'git:abc1234']);
+      json(['external', 'link', '--id', taskId, '--system', 'jira', '--key', 'SQ-1']);
+      const traced = json(['trace', taskId]);
+      expect(traced['matrix']).toMatchObject({ use_case: ['spec:docs/spec.md#us-1'], commit: ['git:abc1234'], task: [expect.stringContaining('Tokenize')] });
+      expect(run(['link', 'of', 'git:abc1234']).stdout).toContain('commit');
+      expect(json(['external', 'find', '--system', 'jira', '--key', 'SQ-1'])).toMatchObject({ id: taskId, type: 'task' });
+      expect(run(['external', 'find', '--system', 'jira', '--key', 'nope']).status).toBe(2);
+      const bad = run(['link', 'add', '--id', taskId, '--rel', 'relates', '--target', 'nonsense']);
+      expect(bad.status).toBe(3);
+      expect(bad.stderr).toContain('target');
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+});

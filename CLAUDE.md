@@ -55,7 +55,11 @@ over `ajv` with a keyword allow-list, `var_get/set/list/delete`); an operation m
 recall ranked by scope → matches → recency, explicit lifecycle, review candidates) and
 `src/domain/playbook` (`command_record` observations as activity, status derived per environment,
 `issue_resolve`, `playbook`, `patterns_for`); `freshActivity` re-reads the activity files because a
-live index does not watch `activity/`; the context carries `runtime` (OS, Node major). Test doubles live in `test/support/fakes`; fixture
+live index does not watch `activity/`; the context carries `runtime` (OS, Node major). Links and traceability (US-100): `src/domain/link` (typed `links` on any entity, prefix parser for
+targets without regular expressions, `links_of` both ways, `trace` as a breadth-first walk over
+links, hierarchy and external keys with a visited set and a 2 000-node cap) and `src/domain/external`
+(tracker references on epics, stories and tasks; no network access anywhere, proven by a test over
+`src/**`). Test doubles live in `test/support/fakes`; fixture
 operations (`test/support/fixture-operations.ts`) drive the interface-parity test. Document the real structure here as it
 lands. `scripts/rules-pending.txt` lists code-level rules not yet proven —
 each story removes the rules it proves.
