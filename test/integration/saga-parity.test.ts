@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
 import type { IsolatedEnv } from '../support/isolated-env.ts';
 import { connectMcp, resultText } from '../support/mcp-client.ts';
@@ -29,7 +30,7 @@ function fixture<T>(name: string): T {
  */
 async function startWarlog(): Promise<{ iso: IsolatedEnv; mcp: McpSession }> {
   const iso = isolatedEnv();
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+  execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
   const mcp = await connectMcp([BIN, 'mcp'], { cwd: iso.cwd, env: iso.env, timeoutMs: 20_000 });
   return { iso, mcp };
 }

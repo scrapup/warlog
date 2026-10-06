@@ -59,6 +59,18 @@ function toJsonValue(result: OperationResult): unknown {
   }
 }
 
+/**
+ * Raw form of a result: printed when the result offers one and the caller asked for no format
+ * and no fields (WL-39).
+ * @param result - Result.
+ * @param options - Requested format and fields.
+ * @returns The raw text, or `undefined` when the normal rendering applies.
+ */
+function rawText(result: OperationResult, options: PresentOptions): string | undefined {
+  const plain = options.format === undefined && (options.fields ?? []).length === 0;
+  return plain && result.kind === 'object' && result.raw !== undefined ? String(result.raw) : undefined;
+}
+
 /** Renders results. */
 export class Presenter {
   /**
@@ -70,6 +82,10 @@ export class Presenter {
    * @throws {WarlogError} `VALIDATION` on an unknown field or a table requested for a non-list result.
    */
   present(result: OperationResult, defaultFormat: DefaultFormat, options: PresentOptions = {}): string {
+    const raw = rawText(result, options);
+    if (raw !== undefined) {
+      return raw;
+    }
     const projected = project(result, options.fields ?? []);
     const format = options.format ?? defaultFormat;
     if (format === 'json') {

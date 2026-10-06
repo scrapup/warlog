@@ -15,6 +15,7 @@ const SCHEMA = z.object({
   meta: z.object({ k: z.string() }).optional(),
   frozen: z.array(z.string()).readonly(),
   either: z.union([z.string(), z.number()]).optional(),
+  shape: z.union([z.object({ a: z.string() }), z.array(z.string())]).optional(),
 });
 
 /**
@@ -42,7 +43,8 @@ describe('flag mapper', () => {
     expect(spec('urgent')).toMatchObject({ kind: 'boolean', required: false });
     expect(spec('meta')).toMatchObject({ kind: 'complex', typeLabel: 'object' });
     expect(spec('frozen')).toMatchObject({ kind: 'string-array', required: true });
-    expect(spec('either')).toMatchObject({ kind: 'complex', typeLabel: 'union' });
+    expect(spec('either')).toMatchObject({ kind: 'typed-text', typeLabel: 'json | text' });
+    expect(spec('shape')).toMatchObject({ kind: 'complex', typeLabel: 'union' });
   });
 
   it('[WL-36] converts flag text to the field type, leaving invalid text for validation', () => {
@@ -55,6 +57,19 @@ describe('flag mapper', () => {
     expect(convertFlagValue(count, ' ')).toBe(' ');
     expect(convertFlagValue(count, 4)).toBe(4);
     expect(convertFlagValue({ ...count, kind: 'number-array' }, [5])).toEqual([5]);
+  });
+
+  it('[WL-28] typed-text flags keep the type written as JSON and never guess otherwise', () => {
+    const either = spec('either');
+    expect(convertFlagValue(either, 'true')).toBe(true);
+    expect(convertFlagValue(either, '12')).toBe(12);
+    expect(convertFlagValue(either, '"012"')).toBe('012');
+    expect(convertFlagValue(either, '[1,2]')).toEqual([1, 2]);
+    expect(convertFlagValue(either, '{"a":1}')).toEqual({ a: 1 });
+    for (const text of ['no', 'off', '012', 'null', 'plain words', '1.', '']) {
+      expect(convertFlagValue(either, text)).toBe(text);
+    }
+    expect(convertFlagValue(either, true)).toBe(true);
   });
 });
 

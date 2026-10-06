@@ -15,6 +15,7 @@ import type { StoreView } from '../../src/core/ports/store-view.port.ts';
 import { PathGuard } from '../../src/core/security/path-guard.ts';
 import { entityStoreFactory } from '../../src/core/storage/entity-store.ts';
 import { SecretGuard } from '../../src/core/security/secret-guard.ts';
+import { varRepositoryFactory } from '../../src/domain/var/var.repository.ts';
 import { productOperations } from '../../src/domain/operations.ts';
 import type { DomainDeps } from '../../src/domain/operations.ts';
 import { SequentialIds } from './fakes/simple-fakes.ts';
@@ -95,7 +96,7 @@ export function trackerHarness(options: HarnessOptions = {}): TrackerHarness {
   const guard = new PathGuard(store.fs);
   const builder = new IndexBuilder({ fs: store.fs, clock: store.clock });
   const indexes = new IndexProvider({ fs: store.fs, builder, guard, logger: store.logger, mode: options.mode ?? 'lazy' });
-  const deps: DomainDeps = { fs: store.fs, logger: store.logger, entities: entityStoreFactory(store.fs, guard) };
+  const deps: DomainDeps = { fs: store.fs, logger: store.logger, entities: entityStoreFactory(store.fs, guard), vars: varRepositoryFactory(store.fs, guard) };
   const harness = {
     ...store,
     ids,

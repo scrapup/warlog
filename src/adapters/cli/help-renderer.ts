@@ -62,7 +62,7 @@ export function renderOperationHelp(def: OperationDefinition): string {
   const params = specs.map((s) => [flagText(s), s.typeLabel, s.required ? 'yes' : 'no', defaultText(s), s.description]);
   const example = stringifyYaml(def.examples[0] ?? {}).trimEnd();
   return [
-    `Usage: warlog ${path} [options]`,
+    `Usage: warlog ${path} [options]${def.positional === undefined ? '' : ` [${def.positional}]`}`,
     '',
     def.description,
     '',

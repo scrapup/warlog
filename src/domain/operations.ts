@@ -6,6 +6,7 @@ import type { OperationDefinition } from '../core/mediator/operation-definition.
 import type { FileSystem } from '../core/ports/file-system.port.ts';
 import type { Logger } from '../core/ports/logger.port.ts';
 import type { EntityStoreFactory } from '../core/storage/entity-store.ts';
+import type { VarRepositoryFactory } from './var/var.repository.ts';
 import { commentAddOperation } from './comment/comment-add.operation.ts';
 import { commentListOperation } from './comment/comment-list.operation.ts';
 import { commentDeleteOperation } from './comment/comment-delete.operation.ts';
@@ -23,6 +24,10 @@ import { noteRestoreOperation } from './note/note-restore.operation.ts';
 import { projectCreateOperation } from './project/project-create.operation.ts';
 import { projectListOperation } from './project/project-list.operation.ts';
 import { projectUpdateOperation } from './project/project-update.operation.ts';
+import { varDeleteOperation } from './var/var-delete.operation.ts';
+import { varGetOperation } from './var/var-get.operation.ts';
+import { varListOperation } from './var/var-list.operation.ts';
+import { varSetOperation } from './var/var-set.operation.ts';
 import { writerFactory } from './shared/writer-factory.ts';
 import { storyArchiveOperation } from './story/story-archive.operation.ts';
 import { storyCreateOperation } from './story/story-create.operation.ts';
@@ -64,6 +69,8 @@ export interface DomainDeps {
   readonly logger: Logger;
   /** Opens the entity store of a call's roots. */
   readonly entities: EntityStoreFactory;
+  /** Opens the variable repository of a call's roots. */
+  readonly vars: VarRepositoryFactory;
 }
 
 /** Builds the registry content from the domain collaborators. */
@@ -125,5 +132,9 @@ export function productOperations(deps: DomainDeps): OperationDefinition[] {
     templateUpdateOperation(writers),
     templateDeleteOperation(writers),
     templateApplyOperation(writers),
+    varSetOperation(deps.vars),
+    varGetOperation(deps.vars),
+    varListOperation(),
+    varDeleteOperation(deps.vars),
   ];
 }

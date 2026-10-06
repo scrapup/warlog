@@ -52,7 +52,8 @@ npm install -g @scrapup/warlog
 
 ```bash
 warlog --help                          # help at every level: groups, operations, parameters
-warlog var get forge.parallel_executors  # typed variable, most specific scope wins
+warlog var set forge.parallel_executors --value false --scope repo   # typed; --value true keeps its type
+warlog var get forge.parallel_executors  # scalar printed raw; project > repository > global wins
 warlog mcp                             # start the MCP server over stdio
 ```
 

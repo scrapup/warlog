@@ -6,7 +6,7 @@
 import type { z } from 'zod';
 
 /** How a flag value is converted. */
-export type FlagKind = 'string' | 'number' | 'boolean' | 'enum' | 'string-array' | 'number-array' | 'complex';
+export type FlagKind = 'string' | 'number' | 'boolean' | 'enum' | 'string-array' | 'number-array' | 'typed-text' | 'complex';
 
 /** One input field as seen by the command line. */
 export interface FieldSpec {
@@ -40,6 +40,8 @@ interface SchemaDef {
   readonly entries?: Record<string, string>;
   /** Default value. */
   readonly defaultValue?: unknown;
+  /** Union members. */
+  readonly options?: readonly SchemaNode[];
 }
 
 /** Internal view of a zod schema node. */
@@ -139,7 +141,17 @@ function kindOf(node: SchemaNode): KindLabel {
       return array;
     }
   }
-  return { kind: 'complex', typeLabel: COMPLEX_LABELS[type] ?? type };
+  return unionKind(node) ?? { kind: 'complex', typeLabel: COMPLEX_LABELS[type] ?? type };
+}
+
+/**
+ * Kind of a union that includes scalar members: its flag takes JSON-or-text.
+ * @param node - Schema node.
+ * @returns The kind, or `undefined` for other nodes.
+ */
+function unionKind(node: SchemaNode): KindLabel | undefined {
+  const scalarMember = (node.def.options ?? []).some((o) => o.def.type in SCALAR_KINDS);
+  return node.def.type === 'union' && scalarMember ? { kind: 'typed-text', typeLabel: 'json | text' } : undefined;
 }
 
 /**
@@ -199,6 +211,22 @@ function toBoolean(raw: unknown): unknown {
 }
 
 /**
+ * Reads the text of a typed-text flag: valid JSON (`true`, `12`, `"a b"`, `[1]`, `{"a":1}`) keeps
+ * the type it was written with; anything else (`no`, `012`, plain words) stays a string, so a
+ * value is never coerced by guessing (WL-28).
+ * @param text - Flag text.
+ * @returns The parsed JSON value, or the text.
+ */
+function toTypedText(text: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && ['string', 'number', 'boolean', 'object'].includes(typeof parsed) ? parsed : text;
+  } catch {
+    return text;
+  }
+}
+
+/**
  * Converts a raw flag value to the field's type.
  * @param spec - Field spec.
  * @param raw - Value(s) collected by the parser.
@@ -211,6 +239,8 @@ export function convertFlagValue(spec: FieldSpec, raw: unknown): unknown {
       return typeof raw === 'string' ? toNumber(raw) : raw;
     case 'boolean':
       return toBoolean(raw);
+    case 'typed-text':
+      return typeof raw === 'string' ? toTypedText(raw) : raw;
     case 'string-array':
       return values;
     case 'number-array':
