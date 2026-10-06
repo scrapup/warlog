@@ -5,12 +5,13 @@
  * pass the entry kind from the directory listing, so a file costs one open, one read and one close.
  */
 import type { EntryKind, FileSystem } from '../ports/file-system.port.ts';
+import { MAX_ENTITY_BYTES } from '../storage/entity-file-repository.ts';
 import { readStoreFile } from './entity-reader.ts';
 import type { ReadOutcome } from './entity-reader.ts';
 import type { ScannedFile } from './indexed-entity.ts';
 
 /** Largest store file loaded into the view (2 MiB, the Markdown limit of WL-65). */
-export const MAX_STORE_FILE_BYTES = 2 * 1024 * 1024;
+export const MAX_STORE_FILE_BYTES = MAX_ENTITY_BYTES;
 
 /** Content of a file that was read. */
 export interface FileText {

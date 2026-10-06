@@ -30,7 +30,7 @@ class RecordingGit extends FakeGitClient {
  */
 function setup(vars: Record<string, string> = {}) {
   const resolved: string[] = [];
-  const git = new RecordingGit({ branch: 'feature' });
+  const git = new RecordingGit({ branch: 'feature', topLevel: '/work/repo-top' });
   const roots: StoreRoots = { global: '/home/u/.warlog', warnings: ['git.unavailable'] };
   const factory = new StoreContextFactory({
     resolver: {
@@ -93,5 +93,12 @@ describe('store context factory', () => {
     expect(await context.currentBranch()).toBe('feature');
     expect(git.branchCalls).toEqual(['/work/repo']);
     expect((await setup({ WARLOG_PROJECT: ' ' }).factory.create(REQUEST)).defaultProject).toBeUndefined();
+  });
+
+  it('[WL-69] carries the working directory and resolves the top level of the working tree from it', async () => {
+    const { factory } = setup();
+    const context = await factory.create(REQUEST);
+    expect(context.cwd).toBe('/work/repo');
+    expect(await context.topLevel()).toBe('/work/repo-top');
   });
 });

@@ -148,7 +148,29 @@ describe('live index source (MCP server)', () => {
     await indexes.ensure({ global: GLOBAL_ROOT, warnings: [] });
     await first;
     expect(built).toBe(1);
+    expect(logger.events.length).toBeGreaterThan(0);
     expect(logger.events.every((e) => e.level === 'warn' && e.event === 'index.built')).toBe(true);
+  });
+
+  it('[WL-06] a watcher that fails to start is logged and leaves a usable index, without an unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const { indexes, logger } = provider(store(), 'live', () => {
+        throw new Error('watch failed');
+      });
+      expect((await indexes.ensure(ROOTS)).size).toBe(2);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(logger.events.filter((e) => e.event === 'index.watcher_start_failed')).toEqual([
+        { level: 'error', event: 'index.watcher_start_failed', fields: expect.objectContaining({ error_name: 'Error' }) },
+      ]);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   it('retries a build that failed', async () => {

@@ -75,4 +75,14 @@ describe('NodeTimers', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(ran).toBe(1);
   });
+
+  it('[WL-06] a pending timer does not keep the process alive (it is unreferenced)', () => {
+    const timers = new NodeTimers();
+    const handle = timers.setTimeout(() => undefined, 60_000);
+    try {
+      expect(handle.hasRef()).toBe(false);
+    } finally {
+      timers.clearTimeout(handle);
+    }
+  });
 });

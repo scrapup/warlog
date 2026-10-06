@@ -54,6 +54,15 @@ describe('PathGuard (in memory)', () => {
     });
   });
 
+  it('[WL-49] rejects a dangling symbolic link, which a later write would follow out of the root', async () => {
+    const fs = new MemoryFileSystem({ [resolve('/store/keep.md')]: 'y' });
+    fs.links.set(norm(resolve('/store/activity/day.jsonl')), norm(resolve('/outside/created.jsonl')));
+    await expect(new PathGuard(fs).resolveInside(resolve('/store'), 'activity', 'day.jsonl')).rejects.toMatchObject({
+      code: 'VALIDATION',
+      message: 'path goes through a dangling symbolic link',
+    });
+  });
+
   it('propagates file-system errors other than NOT_FOUND', async () => {
     const fs = new MemoryFileSystem();
     fs.realpath = async () => Promise.reject(new Error('EACCES'));
@@ -78,5 +87,17 @@ describe('PathGuard (real file system)', () => {
     await expect(guard.resolveInside(root, 'evil', 'x.md')).rejects.toMatchObject({ code: 'VALIDATION' });
     expect(await guard.resolveInside(root, 'inner', 'new', 'x.md')).toBe(join(root, 'inner', 'new', 'x.md'));
     expect(await guard.resolveInside(join(dir, 'missing-root'), 'x.md')).toBe(join(dir, 'missing-root', 'x.md'));
+  });
+
+  it('[WL-49] rejects a real dangling symbolic link pointing outside the root', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'warlog-guard-'));
+    const root = join(dir, 'store');
+    mkdirSync(join(root, 'activity'), { recursive: true });
+    try {
+      symlinkSync(join(dir, 'outside', 'created.jsonl'), join(root, 'activity', 'day.jsonl'), 'file');
+    } catch {
+      return; // creating symbolic links needs a privilege on some Windows setups
+    }
+    await expect(new PathGuard(new NodeFileSystem()).resolveInside(root, 'activity', 'day.jsonl')).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 });

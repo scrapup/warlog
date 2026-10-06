@@ -58,7 +58,7 @@ export function memoryStore(options: { withRepository?: boolean; machine?: strin
     logger,
     roots,
     paths,
-    repo: new EntityFileRepository({ fs, paths, clock, machine }),
+    repo: new EntityFileRepository({ fs, paths, clock, machine, logger }),
     activity: new ActivityLog({ fs, clock, machine, guard, logger }),
   };
 }

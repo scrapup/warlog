@@ -73,6 +73,17 @@ export async function listTreeAt(path: string): Promise<TreeEntry[]> {
  * @returns The content, or `undefined` above the limit.
  */
 export async function readBounded(path: string, maxBytes: number): Promise<string | undefined> {
+  return (await readBoundedBytes(path, maxBytes))?.toString('utf8');
+}
+
+/**
+ * Reads a file of at most `maxBytes` as bytes: one open without following a final link, the limit
+ * enforced while reading (a file that grows after being opened cannot exceed it).
+ * @param path - File path.
+ * @param maxBytes - Size limit.
+ * @returns The content, or `undefined` above the limit.
+ */
+export async function readBoundedBytes(path: string, maxBytes: number): Promise<Buffer | undefined> {
   const handle = await fs.open(path, OPEN_NO_FOLLOW);
   try {
     const chunks: Buffer[] = [];
@@ -86,7 +97,7 @@ export async function readBounded(path: string, maxBytes: number): Promise<strin
       }
       chunks.push(buffer.subarray(0, bytesRead));
       if (bytesRead < READ_CHUNK_BYTES) {
-        return Buffer.concat(chunks, total).toString('utf8');
+        return Buffer.concat(chunks, total);
       }
     }
   } finally {

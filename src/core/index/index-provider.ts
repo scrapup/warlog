@@ -5,6 +5,7 @@
  * and released by {@link IndexProvider.close}). `load: point` operations get a source that
  * refuses the full index, in both profiles.
  */
+import { errorFields } from '../errors/error-fields.ts';
 import { WarlogError } from '../errors/warlog-error.ts';
 import type { FileSystem } from '../ports/file-system.port.ts';
 import type { Logger } from '../ports/logger.port.ts';
@@ -124,12 +125,8 @@ export class IndexProvider {
     this.close();
     const entry: LiveEntry = { key, index: this.buildLive(roots), dispose: undefined };
     this.live = entry;
-    entry.index.then(
-      (index) => {
-        if (this.live === entry) {
-          entry.dispose = this.deps.onBuilt?.(index, roots);
-        }
-      },
+    void entry.index.then(
+      (index) => this.armWatcher(entry, index, roots),
       () => {
         if (this.live === entry) {
           this.live = undefined;
@@ -137,6 +134,24 @@ export class IndexProvider {
       },
     );
     return entry.index;
+  }
+
+  /**
+   * Starts the watcher of a freshly built index. A failure is logged, never thrown: the index stays
+   * usable (without watching) and an unhandled rejection would end the server.
+   * @param entry - The live entry the index belongs to.
+   * @param index - The built index.
+   * @param roots - Roots of the index.
+   */
+  private armWatcher(entry: LiveEntry, index: StoreIndex, roots: StoreRoots): void {
+    if (this.live !== entry) {
+      return;
+    }
+    try {
+      entry.dispose = this.deps.onBuilt?.(index, roots);
+    } catch (error: unknown) {
+      this.deps.logger.log('error', 'index.watcher_start_failed', { ...errorFields(error) });
+    }
   }
 
   /** Stops the live index's watcher and forgets the index. */
