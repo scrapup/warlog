@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gitExecutable } from '../support/git-executable.ts';
 import { isolatedEnv } from '../support/isolated-env.ts';
@@ -204,6 +204,32 @@ describe('warlog After-Action Review from the packed tarball', () => {
 });
 
 describe('warlog document registry from the packed tarball', () => {
+  it('[WL-69] refuses an image that is a real symbolic link leaving the document folder and a reference path that leaves the repository', () => {
+    const iso = isolatedEnv();
+    try {
+      execFileSync(gitExecutable(), ['init', '-q', '-b', 'main'], { cwd: iso.cwd });
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      const outside = join(iso.cwd, '..', `outside-${process.pid}.png`);
+      writeFileSync(outside, 'SECRET-OUTSIDE');
+      const folder = join(iso.cwd, 'docs', 'specs', 'core', 'leak');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, 'design.md'), '# D\n\n![x](leak.png)\n');
+      try {
+        symlinkSync(outside, join(folder, 'leak.png'), 'file');
+      } catch {
+        return; // creating symbolic links needs a privilege on some Windows setups
+      }
+      const result = run(['doc', 'import', 'docs/specs/core/leak']);
+      expect(result.status).toBe(3);
+      expect(result.stderr).toContain('outside the document folder tree');
+      expect(result.stderr + result.stdout).not.toContain('SECRET-OUTSIDE');
+      expect(run(['doc', 'list']).stdout).not.toContain('design');
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+
+
   it('[WL-60] [WL-61] [WL-66] [WL-68] registers a folder by path, reads one section, searches and exports it', () => {
     const iso = isolatedEnv();
     try {

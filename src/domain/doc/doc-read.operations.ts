@@ -28,7 +28,7 @@ const GET_INPUT = z.object({ id: DOC_ID, section: z.string().min(1).optional().d
 const TOC_INPUT = z.object({ id: DOC_ID, version: VERSION });
 
 /** `doc_search` input. */
-const SEARCH_INPUT = z.object({ id: DOC_ID, query: z.string().min(1).describe('Words to find (case-insensitive, literal; every word must appear in the section)'), version: VERSION });
+const SEARCH_INPUT = z.object({ id: DOC_ID, query: z.string().refine((q) => tokensOf(q).length > 0, 'must contain at least one word').describe('Words to find (case-insensitive, literal; every word must appear in the section)'), version: VERSION });
 
 /** A document and its content. */
 interface OpenedDocument {

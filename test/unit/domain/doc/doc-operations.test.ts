@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { resolve } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
+import { norm } from '../../../support/fakes/memory-file-system.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
 import type { TrackerHarness } from '../../../support/tracker-harness.ts';
 
@@ -232,6 +233,11 @@ describe('reference mode', () => {
     put(h, 'docs/specs/core/ref/design.md', '# D\n\n## One\n\n## Two\n');
     expect(await h.obj('doc_get', { id: row?.['id'] })).toMatchObject({ changed_since_registration: true });
     expect((await h.rows('doc_toc', { id: row?.['id'] })).length).toBe(3);
+    const metaPath = [...h.fs.files.keys()].find((k) => k.endsWith('design.yaml') && !k.includes('versions')) ?? '';
+    const before = h.fs.files.get(metaPath);
+    await h.obj('doc_get', { id: row?.['id'] });
+    expect(h.fs.files.get(metaPath)).toBe(before);
+    expect(await h.obj('doc_get', { id: row?.['id'] })).toMatchObject({ changed_since_registration: true });
   });
 
   it('[WL-73] a moved or deleted referenced file is a broken reference', async () => {
@@ -268,6 +274,49 @@ describe('doctor document references', () => {
   it('[WL-45] reports nothing outside a repository', async () => {
     const h = trackerHarness({ mode: 'live', withRepository: false });
     expect((await h.obj('doctor'))['document_references']).toEqual([]);
+  });
+});
+
+describe('tampered registry metadata (the store may come from an untrusted clone)', () => {
+  /**
+   * Registers a document by reference and returns its id and metadata file.
+   * @param h - Harness.
+   * @returns The id and the path of its metadata.
+   */
+  async function referenced(h: TrackerHarness): Promise<{ id: string; meta: string }> {
+    put(h, 'docs/specs/core/ref/design.md', '# D\n');
+    await h.obj('doc_import', { path: 'docs/specs/core/ref/design.md', mode: 'reference' });
+    const [row] = await h.rows('doc_list');
+    const meta = [...h.fs.files.keys()].find((k) => k.endsWith('design.yaml') && !k.includes('versions')) ?? '';
+    return { id: String(row?.['id']), meta };
+  }
+
+  it.each(['../outside.md', '../../etc/passwd', '/etc/passwd', 'docs/../../outside.md', 'C:/Windows/win.ini', 'a\\..\\b.md'])('[WL-69] [WL-73] a reference whose source_path is %p is not read', async (sourcePath) => {
+    const h = trackerHarness();
+    const { id, meta } = await referenced(h);
+    h.fs.files.set(resolve('/src/outside.md'), 'SECRET OUTSIDE THE REPOSITORY');
+    h.fs.files.set(meta, (h.fs.files.get(meta) ?? '').replace(/source_path: .*/, `source_path: ${JSON.stringify(sourcePath)}`));
+    const error = await failure(h.call('doc_get', { id }));
+    expect(isWarlogError(error, 'INVALID_FILE')).toBe(true);
+    expect(JSON.stringify(error)).not.toContain('SECRET');
+  });
+
+  it('[WL-69] [WL-73] a symbolic link inside the repository leading outside it is not followed by a reference', async () => {
+    const h = trackerHarness();
+    const { id } = await referenced(h);
+    h.fs.files.set(resolve('/outside/secret.md'), 'SECRET OUTSIDE THE REPOSITORY');
+    h.fs.files.delete(resolve(TOP, 'docs/specs/core/ref/design.md'));
+    h.fs.links.set(norm(resolve(TOP, 'docs/specs/core/ref/design.md')), norm(resolve('/outside/secret.md')));
+    const error = await failure(h.call('doc_get', { id }));
+    expect(isWarlogError(error, 'INVALID_FILE')).toBe(true);
+    expect(JSON.stringify(error)).not.toContain('SECRET');
+  });
+
+  it('[WL-45] a metadata file missing required fields is reported as invalid instead of failing later', async () => {
+    const h = trackerHarness();
+    const { id, meta } = await referenced(h);
+    h.fs.files.set(meta, `id: ${id}\nkind: design\ntitle: t\n`);
+    expect(isWarlogError(await failure(h.call('doc_get', { id })), 'INVALID_FILE')).toBe(true);
   });
 });
 

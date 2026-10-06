@@ -2,11 +2,12 @@
  * Reads the content of a registered document: stored copy, kept version, or the live file of a
  * reference (WL-73), which is compared with its registered fingerprint on every read.
  */
-import { join } from 'node:path';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import type { OperationContext } from '../../core/mediator/operation-context.ts';
 import type { FileSystem } from '../../core/ports/file-system.port.ts';
 import { sha256Hex } from '../../core/security/sha256.ts';
+import { parseToc } from './doc.repository.ts';
+import { resolveReference } from './reference-path.ts';
 import type { DocRepository } from './doc.repository.ts';
 import type { FoundDocument } from './doc.schema.ts';
 import { scanMarkdown } from './markdown-scanner.ts';
@@ -74,42 +75,36 @@ export class DocReader {
       if (text === undefined) {
         throw new WarlogError('NOT_FOUND', `version ${version} of document ${found.meta.id} not found`, { type: 'document_version', id: String(version) });
       }
-      return { text, toc: this.asToc(await this.repo.readYaml(`${dir}/toc.yaml`)), changed: false };
+      return { text, toc: parseToc(await this.repo.readYaml(`${dir}/toc.yaml`), `${dir}/toc.yaml`), changed: false };
     }
     const text = await this.fs.readFileBounded(await paths.doc(found), MAX_DOC_BYTES);
     return { text: text ?? '', toc: await this.repo.readToc(found), changed: false };
   }
 
   /**
-   * Coerces a parsed index file.
-   * @param data - Parsed YAML.
-   * @returns The entries.
-   */
-  private asToc(data: unknown): TocEntry[] {
-    return Array.isArray(data) ? (data as TocEntry[]) : [];
-  }
-
-  /**
-   * Reads the live file of a reference and refreshes the registration when it changed.
+   * Reads the live file of a reference and compares it with the registered fingerprint. A read
+   * never writes: the registry keeps the fingerprint of the registration, so a change stays
+   * visible (here and in `doctor`) until the document is registered again.
    * @param found - The document.
    * @param context - Call context.
-   * @returns The live content.
-   * @throws {WarlogError} `INVALID_FILE` (`broken_reference`) when the file moved or disappeared.
+   * @returns The live content, with `changed` set when it differs from the registration.
+   * @throws {WarlogError} `INVALID_FILE` (`broken_reference`) when the file moved, disappeared or is too large;
+   *   (`reference_outside_repository`) when the registered path leaves the repository.
    */
   private async readReference(found: FoundDocument, context: OperationContext): Promise<DocContent> {
     const top = await context.topLevel();
-    const path = top === undefined ? undefined : join(top, ...found.meta.source_path.split('/'));
-    const text = path === undefined ? undefined : await this.fs.readFileBounded(path, MAX_DOC_BYTES).catch(() => undefined);
+    const target = top === undefined ? ({ problem: 'missing' } as const) : await resolveReference(this.fs, top, found.meta.source_path);
+    if ('problem' in target) {
+      const outside = target.problem === 'outside';
+      throw new WarlogError('INVALID_FILE', outside ? `referenced path ${found.meta.source_path} is not inside the repository` : `referenced file ${found.meta.source_path} moved or disappeared`, {
+        reason: outside ? 'reference_outside_repository' : 'broken_reference',
+        file: found.meta.source_path,
+      });
+    }
+    const text = await this.fs.readFileBounded(target.path, MAX_DOC_BYTES);
     if (text === undefined) {
-      throw new WarlogError('INVALID_FILE', `referenced file ${found.meta.source_path} moved or disappeared`, { reason: 'broken_reference', file: found.meta.source_path });
+      throw new WarlogError('INVALID_FILE', `referenced file ${found.meta.source_path} is larger than 2 MB`, { reason: 'broken_reference', file: found.meta.source_path });
     }
-    const sha = sha256Hex(text);
-    const toc = buildToc(text, scanMarkdown(text).headings);
-    if (sha === found.meta.source_sha256) {
-      return { text, toc, changed: false };
-    }
-    await this.repo.writeYaml(await this.repo.paths.toc(found), toc);
-    await this.repo.writeYaml(await this.repo.paths.meta(found), { ...found.meta, source_sha256: sha, bytes: Buffer.byteLength(text), updated_at: context.clock.now().toISOString(), rev: found.meta.rev + 1 });
-    return { text, toc, changed: true };
+    return { text, toc: buildToc(text, scanMarkdown(text).headings), changed: sha256Hex(text) !== found.meta.source_sha256 };
   }
 }

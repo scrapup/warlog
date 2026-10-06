@@ -76,13 +76,33 @@ function byteOffsets(text: string, offsets: readonly number[]): Map<number, numb
 }
 
 /**
+ * Where each section ends: at the next heading of the same or a higher level, else at the end of
+ * the text. One pass with a stack of the sections still open, so the cost is linear in the number
+ * of headings (a document may hold hundreds of thousands).
+ * @param length - Length of the text.
+ * @param headings - Headings in document order.
+ * @returns One end offset (character index) per heading.
+ */
+function sectionEnds(length: number, headings: readonly Heading[]): number[] {
+  const ends = headings.map(() => length);
+  const open: number[] = [];
+  headings.forEach((h, i) => {
+    while (open.length > 0 && (headings[open[open.length - 1] ?? 0]?.level ?? 0) >= h.level) {
+      ends[open.pop() ?? 0] = h.start;
+    }
+    open.push(i);
+  });
+  return ends;
+}
+
+/**
  * Builds the section index.
  * @param text - Markdown.
  * @param headings - Headings found by the scanner.
  * @returns One entry per heading, in document order.
  */
 export function buildToc(text: string, headings: readonly Heading[]): TocEntry[] {
-  const ends = headings.map((h, i) => headings.slice(i + 1).find((n) => n.level <= h.level)?.start ?? text.length);
+  const ends = sectionEnds(text.length, headings);
   const bytes = byteOffsets(text, [...headings.map((h) => h.start), ...ends]);
   const used = new Map<string, number>();
   return headings.map((h, i) => {

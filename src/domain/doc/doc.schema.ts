@@ -65,6 +65,35 @@ export interface Category {
   readonly rev: number;
 }
 
+/** Stored metadata of a document, checked on every read (the store may come from an untrusted clone). */
+export const DOCUMENT_META_SCHEMA = z.object({
+  id: z.string().min(1),
+  kind: z.enum(DOC_KINDS),
+  title: z.string(),
+  mode: z.enum(DOC_MODES).default('copy'),
+  source_path: z.string(),
+  source_sha256: z.string(),
+  bytes: z.number().int().min(0),
+  created_at: z.string(),
+  updated_at: z.string(),
+  version: z.number().int().min(1),
+  rev: z.number().int().min(1),
+  machine: z.string(),
+  links: z.array(z.object({ rel: z.string(), target: z.string() })).optional(),
+  assets: z.array(z.object({ path: z.string().min(1), sha256: z.string(), bytes: z.number().int().min(0) })).default([]),
+  warnings: z.array(z.string()).default([]),
+});
+
+/** One entry of a stored section index. */
+export const TOC_ENTRY_SCHEMA = z.object({
+  level: z.number().int().min(1).max(6),
+  title: z.string(),
+  anchor: z.string(),
+  byte_start: z.number().int().min(0),
+  byte_end: z.number().int().min(0),
+  bytes: z.number().int().min(0),
+});
+
 /** A typed link from a document to another entity. */
 export interface DocLink {
   /** Relation. */
