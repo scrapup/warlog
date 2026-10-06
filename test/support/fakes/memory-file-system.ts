@@ -62,13 +62,24 @@ export class MemoryFileSystem implements FileSystem {
    * @param data - Content.
    * @returns Resolved when written.
    */
-  async writeFileAtomic(path: string, data: string): Promise<void> {
+  async writeFileAtomic(path: string, data: string | Uint8Array): Promise<void> {
     const p = this.resolve(path);
     if (this.failWrites.has(p)) {
       throw new WarlogError('INTERNAL', `cannot replace ${path}`, { path });
     }
-    this.files.set(p, data);
+    this.files.set(p, typeof data === 'string' ? data : Buffer.from(data).toString('latin1'));
     this.mtimes.set(p, Date.now());
+  }
+
+  /**
+   * Reads bytes (binary files are kept as latin1 text in this fake).
+   * @param path - Path.
+   * @param maxBytes - Size limit.
+   * @returns The bytes, or `undefined` above the limit.
+   */
+  async readBinary(path: string, maxBytes: number): Promise<Uint8Array | undefined> {
+    const bytes = Buffer.from(await this.readFile(path), 'latin1');
+    return bytes.length > maxBytes ? undefined : new Uint8Array(bytes);
   }
 
   /**

@@ -43,6 +43,10 @@ export interface OperationContext {
   readonly defaultProject: string | undefined;
   /** Resolves `branch: "current"` to the active git branch. */
   readonly currentBranch: () => Promise<string | undefined>;
+  /** Top level of the working tree the call runs in (`git rev-parse --show-toplevel`); `undefined` outside a repository. */
+  readonly topLevel: () => Promise<string | undefined>;
+  /** Working directory of the call. */
+  readonly cwd: string;
   /** The view of the store (full or point access, plan §3.7). */
   readonly index: IndexSource;
   /** Activity records appended by the Activity behavior after success (commands only). */

@@ -11,6 +11,7 @@ import type { OperationHandler } from '../../core/mediator/operation-definition.
 import type { OperationResult } from '../../core/mediator/operation-result.ts';
 import type { Logger } from '../../core/ports/logger.port.ts';
 import type { FileProblem, RootKind, StoreView } from '../../core/ports/store-view.port.ts';
+import type { ReferenceChecker } from '../doc/reference-checker.ts';
 import { MAX_UNUSED_DAYS, unusedMemories } from '../memory/review-candidates.ts';
 
 /** Age after which a temporary file is reported (1 hour). */
@@ -31,6 +32,10 @@ interface ProbeContext {
   readonly view: StoreView;
   /** Current time (ms). */
   readonly now: number;
+  /** Call context. */
+  readonly operation: OperationContext;
+  /** Looks for changed or broken document references. */
+  readonly references: ReferenceChecker;
 }
 
 /** A section that failed to compute. */
@@ -48,7 +53,7 @@ interface LocatedEntry {
 }
 
 /** A probe computing one section (`NOT_CHECKED` until its story lands). */
-type Probe = (context: ProbeContext) => readonly unknown[] | typeof NOT_CHECKED;
+type Probe = (context: ProbeContext) => readonly unknown[] | typeof NOT_CHECKED | Promise<readonly unknown[]>;
 
 /** Section value in the report. */
 type Section = readonly unknown[] | typeof NOT_CHECKED | FailedSection;
@@ -76,8 +81,7 @@ const PROBES: Readonly<Record<string, Probe>> = {
       .filter((p) => p.reason !== 'merge_conflict')
       .map((p) => ({ ...located(p), reason: p.reason })),
   pending_links: ({ view }) => view.pendingLinks().map((l) => ({ from: l.from, rel: l.rel, target: l.target })),
-  // Checked by US-102.
-  document_references: () => NOT_CHECKED,
+  document_references: ({ references, operation }) => references(operation),
   memories_due_for_review: ({ view, now }) =>
     unusedMemories(view, view.activity.usage, now, MAX_UNUSED_DAYS).map((m) => ({ id: m.id, title: String(m.record.data['title'] ?? ''), reason: `not recalled in ${MAX_UNUSED_DAYS} days` })),
   stale_temp_files: ({ view, now }) =>
@@ -101,13 +105,17 @@ function isClean(section: Section): boolean {
 export class DoctorHandler implements OperationHandler<DoctorInput> {
   /** Logger (codes only). */
   private readonly logger: Logger;
+  /** Document reference checker. */
+  private readonly references: ReferenceChecker;
 
   /**
    * Creates the handler.
    * @param logger - Logger for failed probes.
+   * @param references - Looks for changed or broken document references.
    */
-  constructor(logger: Logger) {
+  constructor(logger: Logger, references: ReferenceChecker) {
     this.logger = logger;
+    this.references = references;
   }
 
   /**
@@ -117,8 +125,9 @@ export class DoctorHandler implements OperationHandler<DoctorInput> {
    * @returns An object with `healthy` and one value per section.
    */
   async handle(_input: DoctorInput, context: OperationContext): Promise<OperationResult> {
-    const probeContext: ProbeContext = { view: await context.index.full(), now: context.clock.now().getTime() };
-    const sections = Object.fromEntries(Object.entries(PROBES).map(([name, probe]) => [name, this.run(name, probe, probeContext)]));
+    const probeContext: ProbeContext = { view: await context.index.full(), now: context.clock.now().getTime(), operation: context, references: this.references };
+    const entries = await Promise.all(Object.entries(PROBES).map(async ([name, probe]) => [name, await this.run(name, probe, probeContext)] as const));
+    const sections = Object.fromEntries(entries);
     return { kind: 'object', value: { healthy: Object.values(sections).every(isClean), ...sections } };
   }
 
@@ -129,9 +138,9 @@ export class DoctorHandler implements OperationHandler<DoctorInput> {
    * @param probeContext - What the probe reads.
    * @returns The section value.
    */
-  private run(name: string, probe: Probe, probeContext: ProbeContext): Section {
+  private async run(name: string, probe: Probe, probeContext: ProbeContext): Promise<Section> {
     try {
-      return probe(probeContext);
+      return await probe(probeContext);
     } catch (error: unknown) {
       this.logger.log('error', 'doctor.probe_failed', { section: name, ...errorFields(error) });
       return { error: toWarlogError(error).code };

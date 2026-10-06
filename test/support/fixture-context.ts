@@ -1,6 +1,7 @@
 /**
  * Test helper: an operation context factory over in-memory fakes.
  */
+import { resolve } from 'node:path';
 import { LiveIndexSource, pointOnly } from '../../src/core/index/index-source.ts';
 import { StoreIndex } from '../../src/core/index/store-index.ts';
 import type { ContextRequest, OperationContext, OperationContextFactory } from '../../src/core/mediator/operation-context.ts';
@@ -31,6 +32,8 @@ export class FixtureContextFactory implements OperationContextFactory {
       runtime: { os: 'linux', node: '22' },
       defaultProject: undefined,
       currentBranch: async () => 'main',
+      topLevel: async () => resolve('/src/warlog'),
+      cwd: resolve('/src/warlog'),
       index: request.load === 'point' ? pointOnly(this.index, request.operation) : this.index,
       activity: [],
       warnings: [],
