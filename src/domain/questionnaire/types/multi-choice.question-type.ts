@@ -20,6 +20,9 @@ export const MULTI_CHOICE_QUESTION = z
   .strict()
   .refine((q) => q.min === undefined || q.max === undefined || q.min <= q.max, 'min must not exceed max');
 
+/** Most choices an answer can hold when the question sets no `max` (an open answer is not unbounded). */
+const MAX_CHOICES = 100;
+
 /** A multi-choice question. */
 interface MultiChoiceQuestion extends QuestionBase {
   /** The options. */
@@ -42,7 +45,7 @@ function checkItems(question: MultiChoiceQuestion, items: readonly unknown[]): s
   if (new Set(items).size !== items.length) {
     return 'must not repeat a choice';
   }
-  const problem = items.map((i) => checkText(i, 500)).find((p) => p !== undefined);
+  const problem = items.map((i) => (typeof i === 'string' && i.trim() === '' ? 'must not be blank' : checkText(i, 500))).find((p) => p !== undefined);
   const outside = items.filter((i) => !question.options.includes(String(i)));
   if (problem !== undefined) {
     return `each choice ${problem}`;
@@ -54,6 +57,6 @@ function checkItems(question: MultiChoiceQuestion, items: readonly unknown[]): s
 export const multiChoiceType: QuestionType<MultiChoiceQuestion> = {
   name: 'multi_choice',
   definition: MULTI_CHOICE_QUESTION,
-  check: (question, answer) => (Array.isArray(answer) ? (checkCount(answer.length, question.min, question.max) ?? checkItems(question, answer)) : 'must be a list of choices'),
+  check: (question, answer) => (Array.isArray(answer) ? (checkCount(answer.length, question.min, question.max ?? MAX_CHOICES) ?? checkItems(question, answer)) : 'must be a list of choices'),
   render: (question, answer) => (answer as string[]).map((a) => `- ${question.options.includes(a) ? a : `Other: ${a}`}`).join('\n'),
 };

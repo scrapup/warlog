@@ -7,6 +7,7 @@ import { isPlainRecord } from '../../core/security/plain-record.ts';
 import { WarlogError } from '../../core/errors/warlog-error.ts';
 import type { Question } from './question-type-registry.ts';
 import { checkAnswer } from './question-type-registry.ts';
+import { answerOf } from './own-answer.ts';
 import { applies } from './when-evaluator.ts';
 
 /** One problem with the answers. */
@@ -34,7 +35,7 @@ function isBlank(answer: unknown): boolean {
  */
 function questionProblems(question: Question, answers: Readonly<Record<string, unknown>>): AnswerProblem[] {
   const path = `answers.${question.id}`;
-  const answer = answers[question.id];
+  const answer = answerOf(answers, question.id);
   if (!applies(question.when, answers)) {
     return answer === undefined ? [] : [{ path, message: `not applicable: ${question.id} is asked only when its condition on ${question.when?.question ?? ''} holds` }];
   }

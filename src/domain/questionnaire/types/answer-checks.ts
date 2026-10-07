@@ -8,7 +8,13 @@
  * @returns `true` when printable.
  */
 export function isPrintable(text: string): boolean {
-  return [...text].every((c) => c >= ' ' || c === '\n' || c === '\r' || c === '\t');
+  for (let i = 0; i < text.length; i += 1) {
+    const unit = text.charCodeAt(i);
+    if (unit < 0x20 && unit !== 0x0a && unit !== 0x0d && unit !== 0x09) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -21,10 +27,11 @@ export function checkText(answer: unknown, max: number): string | undefined {
   if (typeof answer !== 'string') {
     return 'must be text';
   }
-  if (!isPrintable(answer)) {
-    return 'must not contain control characters';
+  // Size first: the scan below must not run over a text that is refused anyway.
+  if (answer.length > max) {
+    return `must be at most ${max} characters`;
   }
-  return answer.length > max ? `must be at most ${max} characters` : undefined;
+  return isPrintable(answer) ? undefined : 'must not contain control characters';
 }
 
 /**
