@@ -10,8 +10,8 @@ import { resolveBranch, resolveProjectScope } from '../shared/lookup.ts';
 import { text } from '../shared/rows.ts';
 import type { Row } from '../shared/rows.ts';
 import { excerpt, matchesAll, tokensOf } from '../shared/text-search.ts';
+import { SEARCH_TYPES } from './search-types.ts';
 import type { TrackerSearchInput } from './tracker-search.operation.ts';
-import { SEARCH_TYPES } from './tracker-search.operation.ts';
 import { trackerScope } from './tracker-scope.ts';
 
 /** How a search type is shown. */

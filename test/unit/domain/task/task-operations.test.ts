@@ -118,6 +118,22 @@ describe.each(['lazy', 'live'] as const)('task operations (%s index)', (mode) =>
     expect(isWarlogError(await failure(h.call('task_batch_update', { ids: ['01J00000000000000000000099'], priority: 'low' })), 'NOT_FOUND')).toBe(true);
   });
 
+  it('[WL-13] task_batch_update writes nothing when any id is unknown or has unfinished subtasks', async () => {
+    const h = trackerHarness({ mode });
+    const { epicId } = await container(h);
+    const ok = await task(h, epicId, 'OK');
+    const open = await task(h, epicId, 'OPEN');
+    await h.call('subtask_create', { task_id: open['id'], titles: ['one'] });
+    const before = new Map(h.fs.files);
+    const missing = await failure(h.call('task_batch_update', { ids: [ok['id'], '01J00000000000000000000099'], status: 'done' }));
+    expect(isWarlogError(missing, 'NOT_FOUND')).toBe(true);
+    const unfinished = await failure(h.call('task_batch_update', { ids: [ok['id'], open['id']], status: 'done' }));
+    expect(isWarlogError(unfinished, 'VALIDATION')).toBe(true);
+    expect(new Map(h.fs.files)).toEqual(before);
+    expect(await statusOf(h, ok['id'])).toBe('todo');
+    expect(await h.obj('task_batch_update', { ids: [ok['id'], open['id'], ok['id']], status: 'done', force: true })).toMatchObject({ updated: 2 });
+  });
+
   it('[WL-10] task_reorder sets positions, keeps unlisted tasks after, and task_list follows it', async () => {
     const h = trackerHarness({ mode });
     const { epicId } = await container(h);
