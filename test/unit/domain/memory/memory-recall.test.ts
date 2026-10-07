@@ -135,7 +135,9 @@ describe.each(['lazy', 'live'] as const)('memory lifecycle (%s index)', (mode) =
     expect(result['superseded']).toMatchObject({ status: 'superseded', superseded_by: newM['id'], status_reason: 'workspace support' });
     expect(result['replacement']).toMatchObject({ links: [{ rel: 'supersedes', target: oldM['id'] }] });
     expect(await recalled(h, { query: 'use' })).toEqual(['use pnpm']);
-    expect(isWarlogError(await failure(h.call('memory_supersede', { id: oldM['id'], superseded_by: newM['id'] })), 'VALIDATION')).toBe(true);
+    expect(await h.obj('memory_supersede', { id: oldM['id'], superseded_by: newM['id'] })).toMatchObject({ replacement: { links: [{ rel: 'supersedes', target: oldM['id'] }] } });
+    const unrelated = await save(h, { kind: 'decision', title: 'use yarn' });
+    expect(isWarlogError(await failure(h.call('memory_supersede', { id: oldM['id'], superseded_by: unrelated['id'] })), 'VALIDATION')).toBe(true);
     expect(isWarlogError(await failure(h.call('memory_supersede', { id: newM['id'], superseded_by: newM['id'] })), 'VALIDATION')).toBe(true);
     expect(isWarlogError(await failure(h.call('memory_supersede', { id: newM['id'], superseded_by: '01J00000000000000000000099' })), 'NOT_FOUND')).toBe(true);
     const third = await save(h, { kind: 'decision', title: 'use bun' });

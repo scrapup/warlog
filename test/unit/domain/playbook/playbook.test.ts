@@ -117,9 +117,35 @@ describe.each(['lazy', 'live'] as const)('command and issue recording (%s index)
     const fact = await save(h, { kind: 'fact', title: 'f' });
     expect(isWarlogError(await failure(h.call('issue_resolve', { id: fact['id'], resolution: 'x' })), 'VALIDATION')).toBe(true);
     const other = await save(h, { kind: 'known_issue', title: 'other', symptom: 's' });
-    expect((await h.obj('issue_resolve', { id: other['id'], resolution: 'fixed', link: 'git:abc123' }))['links']).toEqual([{ rel: 'relates', target: 'git:abc123' }]);
+    expect((await h.obj('issue_resolve', { id: other['id'], resolution: 'fixed', link: 'git:abc1234' }))['links']).toEqual([{ rel: 'relates', target: 'git:abc1234' }]);
     expect(await h.obj('issue_resolve', { id: (await save(h, { kind: 'known_issue', title: 'third', symptom: 's' }))['id'], resolution: 'x' })).not.toHaveProperty('links');
     expect(isWarlogError(await failure(h.call('issue_resolve', { id: '01J00000000000000000000099', resolution: 'x' })), 'NOT_FOUND')).toBe(true);
+  });
+
+  it.each(['PROJ-123', 'http://insecure.example/x', 'file:../../etc/passwd', 'git:XYZ', 'url:javascript:alert(1)', 'two words', 'ftp://x.example/y'])(
+    '[WL-21] issue_resolve rejects the reference %p that link_add would reject, and resolves nothing',
+    async (link) => {
+      const h = trackerHarness({ mode });
+      await container(h);
+      const issue = await save(h, { kind: 'known_issue', title: 'win paths', symptom: 'ENOENT' });
+      const before = new Map(h.fs.files);
+      const error = await failure(h.call('issue_resolve', { id: issue['id'], resolution: 'normalized', link }));
+      expect(error).toMatchObject({ code: 'VALIDATION', details: { field: 'link' } });
+      expect(new Map(h.fs.files)).toEqual(before);
+    },
+  );
+
+  it('[WL-21] a reference given to issue_resolve can be removed with link_remove, is not added twice and keeps a bare https URL working', async () => {
+    const h = trackerHarness({ mode });
+    await container(h);
+    const issue = await save(h, { kind: 'known_issue', title: 'win paths', symptom: 'ENOENT' });
+    const resolved = await h.obj('issue_resolve', { id: issue['id'], resolution: 'normalized', link: 'https://github.com/scrapup/warlog/pull/6' });
+    expect(resolved['links']).toEqual([{ rel: 'relates', target: 'url:https://github.com/scrapup/warlog/pull/6' }]);
+    await h.obj('link_remove', { id: issue['id'], target: 'url:https://github.com/scrapup/warlog/pull/6', rel: 'relates' });
+    expect((await h.obj('memory_get', { id: issue['id'] }))['links'] ?? []).toEqual([]);
+    const again = await save(h, { kind: 'known_issue', title: 'again', symptom: 's' });
+    await h.obj('link_add', { id: again['id'], target: 'git:abc1234', rel: 'relates' });
+    expect((await h.obj('issue_resolve', { id: again['id'], resolution: 'fixed', link: 'git:abc1234' }))['links']).toEqual([{ rel: 'relates', target: 'git:abc1234' }]);
   });
 });
 

@@ -8,6 +8,19 @@ import { container, failure, task } from '../../../support/tracker-setup.ts';
 const MISSING = '01J00000000000000000000099';
 
 describe.each(['lazy', 'live'] as const)('external references (%s index)', (mode) => {
+  it('[WL-23] the key of a deleted item can be linked again to another item', async () => {
+    const h = trackerHarness({ mode });
+    const { epicId } = await container(h);
+    const first = String((await task(h, epicId, 'first'))['id']);
+    const second = String((await task(h, epicId, 'second'))['id']);
+    await h.call('external_link', { id: first, system: 'jira', key: 'SQ-7' });
+    await expect(h.call('external_link', { id: second, system: 'jira', key: 'SQ-7' })).rejects.toMatchObject({ code: 'VALIDATION', details: { field: 'key' } });
+    await h.call('task_delete', { id: first });
+    expect(isWarlogError(await failure(h.call('find_by_external', { system: 'jira', key: 'SQ-7' })), 'NOT_FOUND')).toBe(true);
+    await h.call('external_link', { id: second, system: 'jira', key: 'SQ-7' });
+    expect(await h.obj('find_by_external', { system: 'jira', key: 'SQ-7' })).toMatchObject({ id: second });
+  });
+
   it('[WL-23] epics, stories and tasks hold references that find them by system and key', async () => {
     const h = trackerHarness({ mode });
     const { projectId, epicId } = await container(h);

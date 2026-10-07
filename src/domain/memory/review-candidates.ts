@@ -47,31 +47,113 @@ export function unusedMemories(view: StoreView, usage: ReadonlyMap<string, Usage
     .sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
+/** Most candidate pairs compared in one review; a title shared by thousands of memories cannot make it quadratic. */
+export const MAX_DUPLICATE_CHECKS = 200_000;
+
+/** A memory in play with the words of its title. */
+interface Titled {
+  /** The memory. */
+  readonly memory: IndexedEntity;
+  /** Kind (only memories of one kind are compared). */
+  readonly kind: string;
+  /** Distinct words of the title, rarest first. */
+  readonly words: string[];
+}
+
+/**
+ * Memories in play with their title words, each ordered from the rarest word of its kind to the
+ * most common (ties by word).
+ * @param memories - Memories (any status).
+ * @returns The titled memories.
+ */
+function titled(memories: readonly IndexedEntity[]): Titled[] {
+  const items = memories.filter((m) => isInPlay(m)).map((memory) => ({ memory, kind: text(memory, 'kind'), words: [...tokenSet(text(memory, 'title'))] }));
+  const frequency = new Map<string, number>();
+  for (const { kind, words } of items) {
+    words.forEach((w) => frequency.set(`${kind}\u0000${w}`, (frequency.get(`${kind}\u0000${w}`) ?? 0) + 1));
+  }
+  items.forEach((i) => i.words.sort((x, y) => (frequency.get(`${i.kind}\u0000${x}`) ?? 0) - (frequency.get(`${i.kind}\u0000${y}`) ?? 0) || compareCodeUnits(x, y)));
+  return items;
+}
+
+/**
+ * Indexes the rarest words of every title: two titles with at least {@link DUPLICATE_OVERLAP} of
+ * their words in common must share one of the rarest `n - ceil(0.8 n) + 1` words of each (prefix
+ * filtering), so only those words are indexed. Words common to many memories are rarely indexed,
+ * which keeps the cost independent of how many titles share them.
+ * @param items - Titled memories.
+ * @returns Indexes into `items`, by kind and word.
+ */
+function indexPrefixes(items: readonly Titled[]): Map<string, number[]> {
+  const index = new Map<string, number[]>();
+  items.forEach((item, i) => {
+    const prefix = item.words.length - Math.ceil(DUPLICATE_OVERLAP * item.words.length) + 1;
+    item.words.slice(0, prefix).forEach((w) => {
+      const key = `${item.kind}\u0000${w}`;
+      index.set(key, pushed(index.get(key), i));
+    });
+  });
+  return index;
+}
+
+/**
+ * Appends to a bucket (creating it when missing) without copying it.
+ * @param bucket - Existing bucket.
+ * @param value - Value to append.
+ * @returns The bucket.
+ */
+function pushed(bucket: number[] | undefined, value: number): number[] {
+  const out = bucket ?? [];
+  out.push(value);
+  return out;
+}
+
+/**
+ * Candidate pairs: every two memories that share an indexed word, each pair once.
+ * @param items - Titled memories.
+ * @returns Pairs of indexes into `items`, at most {@link MAX_DUPLICATE_CHECKS}.
+ */
+function candidatePairs(items: readonly Titled[]): [number, number][] {
+  const seen = new Set<number>();
+  const pairs: [number, number][] = [];
+  for (const bucket of indexPrefixes(items).values()) {
+    for (let x = 0; x < bucket.length; x += 1) {
+      for (let y = x + 1; y < bucket.length; y += 1) {
+        const pair: [number, number] = [bucket[x] ?? 0, bucket[y] ?? 0];
+        const key = pair[0] * items.length + pair[1];
+        if (pairs.length >= MAX_DUPLICATE_CHECKS) {
+          return pairs;
+        }
+        if (!seen.has(key)) {
+          seen.add(key);
+          pairs.push(pair);
+        }
+      }
+    }
+  }
+  return pairs;
+}
+
 /**
  * Pairs of memories of the same kind whose titles share at least {@link DUPLICATE_OVERLAP} of
- * their words.
+ * their words. The search is bounded ({@link MAX_DUPLICATE_CHECKS}): a review lists likely
+ * duplicates, it does not promise every one.
  * @param memories - Memories (any status; only those in play are compared).
  * @returns Pairs, most similar first, at most {@link MAX_DUPLICATE_PAIRS}.
  */
 export function likelyDuplicates(memories: readonly IndexedEntity[]): DuplicatePair[] {
-  const sets = new Map(memories.filter((m) => isInPlay(m)).map((m) => [m.id, { memory: m, words: tokenSet(text(m, 'title')) }] as const));
-  const byWord = new Map<string, string[]>();
-  for (const [id, { memory, words }] of sets) {
-    words.forEach((w) => byWord.set(`${text(memory, 'kind')}\u0000${w}`, [...(byWord.get(`${text(memory, 'kind')}\u0000${w}`) ?? []), id]));
-  }
-  const shared = new Map<string, number>();
-  for (const ids of byWord.values()) {
-    ids.forEach((x, i) => ids.slice(i + 1).forEach((y) => shared.set(`${x}\u0000${y}`, (shared.get(`${x}\u0000${y}`) ?? 0) + 1)));
-  }
-  const pairs: DuplicatePair[] = [];
-  for (const [key, common] of shared) {
-    const [x, y] = key.split('\u0000') as [string, string];
-    const a = sets.get(x);
-    const b = sets.get(y);
-    const overlap = a === undefined || b === undefined ? 0 : common / Math.max(a.words.size, b.words.size);
+  const items = titled(memories);
+  const found: DuplicatePair[] = [];
+  for (const [x, y] of candidatePairs(items)) {
+    const a = items[x];
+    const b = items[y];
+    const words = b === undefined ? new Set<string>() : new Set(b.words);
+    const common = a === undefined ? 0 : a.words.filter((w) => words.has(w)).length;
+    const overlap = a === undefined || b === undefined ? 0 : common / Math.max(a.words.length, b.words.length);
     if (a !== undefined && b !== undefined && overlap >= DUPLICATE_OVERLAP) {
-      pairs.push({ a: a.memory, b: b.memory, overlap: Math.round(overlap * 100) / 100 });
+      const [first, second] = compareCodeUnits(a.memory.id, b.memory.id) <= 0 ? [a, b] : [b, a];
+      found.push({ a: first.memory, b: second.memory, overlap: Math.round(overlap * 100) / 100 });
     }
   }
-  return pairs.sort((p, q) => q.overlap - p.overlap || compareCodeUnits(p.a.id, q.a.id) || compareCodeUnits(p.b.id, q.b.id)).slice(0, MAX_DUPLICATE_PAIRS);
+  return found.sort((p, q) => q.overlap - p.overlap || compareCodeUnits(p.a.id, q.a.id) || compareCodeUnits(p.b.id, q.b.id)).slice(0, MAX_DUPLICATE_PAIRS);
 }
