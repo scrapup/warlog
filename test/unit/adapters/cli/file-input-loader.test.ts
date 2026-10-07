@@ -28,6 +28,11 @@ describe('file input loader', () => {
     expect(parseFileInput('---\ntitle: T\n---\n', 'n.md', 'description').data).toEqual({ title: 'T' });
   });
 
+  it('[WL-36] reads Markdown saved with a byte order mark, as some Windows editors do', () => {
+    const input = parseFileInput('\uFEFF---\ntitle: T\n---\nBody\n', 'n.md', 'content');
+    expect(input.data).toEqual({ title: 'T', content: 'Body\n' });
+  });
+
   it('[WL-36] rejects Markdown without front matter', () => {
     expect(errorOf(() => parseFileInput('# Title\n', 'n.md', 'description'))).toMatchObject({ code: 'VALIDATION', details: { file: 'n.md', line: 1, col: 1 } });
     expect(errorOf(() => parseFileInput('---\ntitle: T\n', 'n.md', 'description')).message).toBe('n.md:1:1 missing front matter');

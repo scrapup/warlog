@@ -17,6 +17,26 @@ function edited(data: Record<string, unknown>): IndexedEntity {
   return { id: 'x', type: 'task', scope: 'repo', projectId: undefined, path: '/x', record: { data, body: '' }, deleted: false };
 }
 
+describe('rank of values read from files', () => {
+  /**
+   * An entity with the given data.
+   * @param data - Front-matter data.
+   * @returns The entity.
+   */
+  function entity(data: Record<string, unknown>): IndexedEntity {
+    return { id: 'x', type: 'task', record: { data, body: '' } } as unknown as IndexedEntity;
+  }
+
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty', 5, undefined])('[WL-10] a hand-edited priority or status of %p ranks last instead of becoming NaN', (value) => {
+    expect(priorityRank(entity({ priority: value }))).toBe(4);
+    expect(statusRank(entity({ status: value }))).toBe(5);
+  });
+
+  it('[WL-10] known values keep their rank', () => {
+    expect([priorityRank(entity({ priority: 'critical' })), priorityRank(entity({ priority: 'low' })), statusRank(entity({ status: 'blocked' })), statusRank(entity({ status: 'done' }))]).toEqual([0, 3, 0, 4]);
+  });
+});
+
 describe('domain helpers on hand-edited values', () => {
   it('ranks unknown priorities and statuses last and reads malformed fields as empty', () => {
     const odd = edited({ priority: 'urgent', status: 'parked', sort_order: '3', tags: 'a', depends_on: 'x', subtasks: 'none', tasks: {} });

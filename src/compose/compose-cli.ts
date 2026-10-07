@@ -2,8 +2,6 @@
  * Composition root of the command line: process streams, input files, the MCP entry and the
  * report of a failure while wiring.
  */
-import { readFile } from 'node:fs/promises';
-import { text } from 'node:stream/consumers';
 import type { CliDeps } from '../adapters/cli/cli-builder.ts';
 import { EXIT_ERROR } from '../adapters/cli/exit-codes.ts';
 import { formatError } from '../adapters/shared/execute-operation.ts';
@@ -13,6 +11,7 @@ import { redactError } from '../core/errors/path-redactor.ts';
 import type { Redaction } from '../core/errors/path-redactor.ts';
 import { toWarlogError } from '../core/errors/warlog-error.ts';
 import type { OperationsFactory } from '../domain/operations.ts';
+import { readInputFile, readInputStream } from './bounded-input.ts';
 import { composeCore, composeLogger, staticRedactions } from './compose-core.ts';
 
 /**
@@ -31,8 +30,8 @@ export function composeCli(operations?: OperationsFactory): CliDeps {
       stderr: (t) => {
         process.stderr.write(t);
       },
-      readFile: (path) => readFile(path, 'utf8'),
-      readStdin: () => text(process.stdin),
+      readFile: readInputFile,
+      readStdin: () => readInputStream(process.stdin),
     },
     startMcp: async () => {
       // Loaded on demand: the MCP SDK stays out of every other command's startup.
