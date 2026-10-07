@@ -159,14 +159,18 @@ describe('warlog mcp from the packed tarball', () => {
         await ready;
         await new Promise((resolve) => setTimeout(resolve, 300));
       };
-      const byTerm = start();
-      const term$ = finish(byTerm);
-      await settled(term$.ready);
-      byTerm.kill('SIGTERM');
-      const term = await term$.done;
-      expect([term.code, term.signal]).toEqual([0, null]);
-      expect(term.stderr).toContain('"event":"mcp.shutdown"');
-      expect(term.stderr).not.toContain(env.cwd);
+      // Windows has no SIGTERM: `kill` there terminates the process at once, so the handler cannot
+      // be exercised; the end-of-input path below runs everywhere.
+      if (process.platform !== 'win32') {
+        const byTerm = start();
+        const term$ = finish(byTerm);
+        await settled(term$.ready);
+        byTerm.kill('SIGTERM');
+        const term = await term$.done;
+        expect([term.code, term.signal]).toEqual([0, null]);
+        expect(term.stderr).toContain('"event":"mcp.shutdown"');
+        expect(term.stderr).not.toContain(env.cwd);
+      }
       const byEof = start();
       const eof$ = finish(byEof);
       await settled(eof$.ready);
