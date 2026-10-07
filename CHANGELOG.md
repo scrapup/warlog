@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.2](https://github.com/scrapup/warlog/compare/v1.1.1...v1.1.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* **adapters:** multi-spec review findings, batch F (MCP, CLI, shared writer) ([#24](https://github.com/scrapup/warlog/issues/24)) ([f42605b](https://github.com/scrapup/warlog/commit/f42605b258af359d0be99cee8e18d1b94e9b0658))
+* **domain:** close the findings of the multi-spec review of variables, memory, playbook and links ([7aaa82e](https://github.com/scrapup/warlog/commit/7aaa82ee044995632db4373ed66ab8a4543efa06))
+* **domain:** multi-spec review findings, batch C (variables, memory, playbook, links) ([#23](https://github.com/scrapup/warlog/issues/23)) ([7aaa82e](https://github.com/scrapup/warlog/commit/7aaa82ee044995632db4373ed66ab8a4543efa06))
+* **tracker:** multi-spec review findings, batch G ([#25](https://github.com/scrapup/warlog/issues/25)) ([7efde82](https://github.com/scrapup/warlog/commit/7efde82b06e2cc486bd00d5185237c82f760cda5))
+
 ## [1.1.1](https://github.com/scrapup/warlog/compare/v1.1.0...v1.1.1) (2026-10-06)
 
 
