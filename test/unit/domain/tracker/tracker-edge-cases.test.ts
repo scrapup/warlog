@@ -73,6 +73,18 @@ describe('tracker edge cases', () => {
     expect(diff['by_entity_type']).toMatchObject({ task: { restored: 1 } });
   });
 
+  it('[SEC-02] session diff counts forged entity types and actions without touching Object.prototype', async () => {
+    const h = trackerHarness();
+    await h.call('project_create', { name: 'P' });
+    const file = [...h.fs.files.keys()].find((path) => path.includes('/activity/') && path.endsWith('.jsonl')) ?? '';
+    const forged = { ts: '2026-10-02T00:00:00.000Z', action: 'toString', entity_type: '__proto__', entity_id: 'x', summary: 's' };
+    h.fs.files.set(file, `${h.fs.files.get(file) ?? ''}${JSON.stringify(forged)}\n`);
+    const diff = await h.obj('tracker_session_diff', { since: '2026-01-01' });
+    expect(typeof ({} as Record<string, unknown>)['toString']).toBe('function');
+    expect(Object.hasOwn(diff['by_entity_type'] as object, '__proto__')).toBe(true);
+    expect(Object.hasOwn(diff['summary'] as object, 'toString')).toBe(true);
+  });
+
   it('[WL-10] activity of a store without repository is read from the global root', async () => {
     const h = trackerHarness({ withRepository: false });
     await h.call('template_create', { name: 'g', tasks: [{ title: 'x' }] });
