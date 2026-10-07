@@ -14,6 +14,8 @@ const SCHEMA = z.object({
   urgent: z.boolean().nullable().optional(),
   meta: z.object({ k: z.string() }).optional(),
   frozen: z.array(z.string()).readonly(),
+  tags: z.array(z.string().min(1).max(64)).optional(),
+  titles: z.array(z.string().trim().min(1).max(500)).optional(),
   either: z.union([z.string(), z.number()]).optional(),
   shape: z.union([z.object({ a: z.string() }), z.array(z.string())]).optional(),
 });
@@ -33,6 +35,14 @@ function spec(key: string): FieldSpec {
 }
 
 describe('flag mapper', () => {
+  it('[WL-35] splits a list of short names on commas, but never a list of free text: the same value must reach the operation as through the MCP', () => {
+    expect(convertFlagValue(spec('tags'), 'a,b')).toEqual(['a', 'b']);
+    expect(spec('titles')).toMatchObject({ kind: 'string-array', splitOnComma: false });
+    expect(convertFlagValue(spec('titles'), 'Fix A, then B')).toEqual(['Fix A, then B']);
+    expect(convertFlagValue(spec('titles'), ['First, with comma', 'Second'])).toEqual(['First, with comma', 'Second']);
+    expect(spec('tags')).not.toHaveProperty('splitOnComma');
+  });
+
   it('[WL-35] derives kebab-case flags, kinds, required flags, defaults and choices from the schema', () => {
     expect(toFlagName('due_date')).toBe('due-date');
     expect(spec('due_date')).toMatchObject({ flag: 'due-date', kind: 'string', required: true, description: 'Due date' });

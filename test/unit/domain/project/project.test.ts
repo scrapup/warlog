@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import { join } from 'node:path';
 import { isWarlogError } from '../../../../src/core/errors/warlog-error.ts';
 import { trackerHarness } from '../../../support/tracker-harness.ts';
+import { task } from '../../../support/tracker-setup.ts';
 
 /**
  * Captures the error of a promise.
@@ -38,10 +39,14 @@ describe.each(['lazy', 'live'] as const)('project operations (%s index)', (mode)
     const a = await h.obj('project_create', { name: 'a' });
     const b = await h.obj('project_create', { name: 'b', status: 'on_hold' });
     const epic = await h.obj('epic_create', { project_id: a['id'], name: 'E' });
-    await h.call('task_create', { epic_id: epic['id'], title: 'T1' }).catch(() => undefined);
+    const done = await task(h, epic['id'] as string, 'T1');
+    const removed = await task(h, epic['id'] as string, 'T2');
+    await task(h, epic['id'] as string, 'T3');
+    await h.call('task_update', { id: done['id'], status: 'done' });
+    await h.call('task_delete', { id: removed['id'] });
     const rows = await h.rows('project_list');
     expect(rows.map((r) => r['name'])).toEqual(['b', 'a']);
-    expect(rows[1]).toMatchObject({ epic_count: 1, completion_pct: 0 });
+    expect(rows[1]).toMatchObject({ epic_count: 1, task_count: 2, done_count: 1, completion_pct: 50 });
     expect((await h.rows('project_list', { status: 'on_hold' })).map((r) => r['id'])).toEqual([b['id']]);
   });
 
