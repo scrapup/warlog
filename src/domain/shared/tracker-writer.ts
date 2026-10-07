@@ -174,15 +174,22 @@ export class TrackerWriter {
   }
 
   /**
-   * Refreshes the view with the written file and queues the activity records.
+   * Queues the activity records of a write that is already on disk, then refreshes the view with
+   * the written file. The records come first and a failing refresh is a warning
+   * (`index.refresh_failed`), not an error: the write happened, and an error would make the caller
+   * retry it and meet a stale revision.
    * @param ref - Written entity.
    * @param events - Activity records.
    * @returns When done.
    */
   private async applied(ref: EntityRef, events: readonly ActivityEvent[]): Promise<void> {
-    await this.context.index.refresh(await this.store.paths.pathFor(ref));
     const root = this.store.paths.rootOf(ref.scope);
     const repoKey = ref.scope === 'repo' ? this.context.roots.repository?.key : undefined;
     this.context.activity.push(...events.map((event) => ({ root, input: activityInput(ref, repoKey, event) })));
+    try {
+      await this.context.index.refresh(await this.store.paths.pathFor(ref));
+    } catch {
+      this.context.warnings.push('index.refresh_failed');
+    }
   }
 }

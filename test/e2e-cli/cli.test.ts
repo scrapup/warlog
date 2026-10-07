@@ -203,6 +203,26 @@ describe('warlog After-Action Review from the packed tarball', () => {
   }, 120_000);
 });
 
+describe('warlog input files from the packed tarball', () => {
+  it('[WL-36] [WL-40] refuses a missing file, a directory and a file above 2 MiB with INVALID_FILE and no local path', () => {
+    const iso = isolatedEnv();
+    try {
+      const run = (args: string[]): ReturnType<typeof runNode> => runNode([bin(), ...args], { cwd: iso.cwd, env: iso.env, timeoutMs: 25_000 });
+      writeFileSync(join(iso.cwd, 'big.yaml'), `value: ${'x'.repeat(2 * 1024 * 1024)}\n`);
+      mkdirSync(join(iso.cwd, 'folder'));
+      for (const [file, reason] of [['nope.yaml', 'cannot read input file'], ['folder', 'not a regular file'], ['big.yaml', 'larger than 2 MiB']] as const) {
+        const result = run(['var', 'set', 'x', '--scope', 'global', '--file', file]);
+        expect([file, result.status]).toEqual([file, 1]);
+        expect(result.stderr).toContain('INVALID_FILE');
+        expect(result.stderr).toContain(reason);
+        expect(result.stderr).not.toContain(iso.cwd);
+      }
+    } finally {
+      iso.dispose();
+    }
+  }, 120_000);
+});
+
 describe('warlog document registry from the packed tarball', () => {
   it('[WL-69] refuses an image that is a real symbolic link leaving the document folder and a reference path that leaves the repository', () => {
     const iso = isolatedEnv();
