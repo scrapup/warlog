@@ -18,8 +18,18 @@ const HIGHLIGHTS = new Set(['status_changed', 'created', 'deleted']);
  * Counts of the base actions, all zero.
  * @returns A fresh counter.
  */
-function zeroCounts(): Record<string, number> {
-  return Object.fromEntries(BASE_COUNTS.map((a) => [a, 0]));
+function zeroCounts(): Map<string, number> {
+  return new Map(BASE_COUNTS.map((a) => [a, 0]));
+}
+
+/**
+ * Adds one to the count of a key. Counters are maps because keys come from activity files that a
+ * cloned repository controls: a plain object indexed by `__proto__` would write to the prototype.
+ * @param counts - Counters.
+ * @param key - Key to count.
+ */
+function bump(counts: Map<string, number>, key: string): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
 /** Handles `tracker_session_diff`. */
@@ -45,18 +55,19 @@ export class TrackerSessionDiffHandler implements OperationHandler<TrackerSessio
     const since = isoInstant(input.since);
     const { records } = await activityOf(this.fs, context, since);
     const summary = zeroCounts();
-    const byEntity: Record<string, Record<string, number>> = {};
+    const byEntity = new Map<string, Map<string, number>>();
     for (const record of records) {
       const action = String(record['action']);
       const type = String(record['entity_type']);
-      summary[action] = (summary[action] ?? 0) + 1;
-      byEntity[type] ??= zeroCounts();
-      byEntity[type][action] = (byEntity[type][action] ?? 0) + 1;
+      bump(summary, action);
+      const row = byEntity.get(type) ?? zeroCounts();
+      bump(row, action);
+      byEntity.set(type, row);
     }
     const highlights = records.filter((r) => HIGHLIGHTS.has(String(r['action'])) && typeof r['summary'] === 'string').map((r) => String(r['summary']));
     return {
       kind: 'object',
-      value: { since, until: context.clock.now().toISOString(), total_changes: records.length, summary, by_entity_type: byEntity, highlights, activity: records.map((r) => ({ ...r })) },
+      value: { since, until: context.clock.now().toISOString(), total_changes: records.length, summary: Object.fromEntries(summary), by_entity_type: Object.fromEntries([...byEntity].map(([type, row]) => [type, Object.fromEntries(row)])), highlights, activity: records.map((r) => ({ ...r })) },
     };
   }
 }

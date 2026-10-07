@@ -4,10 +4,8 @@
 import { z } from 'zod';
 import type { OperationDefinition } from '../../core/mediator/operation-definition.ts';
 import { BRANCH_FILTER, INCLUDE_ARCHIVED, PROJECT_SCOPE, limitField } from '../shared/fields.ts';
+import { SEARCH_TYPES } from './search-types.ts';
 import { TrackerSearchHandler } from './tracker-search.handler.ts';
-
-/** Entity types searched. */
-export const SEARCH_TYPES = ['project', 'epic', 'task', 'note'] as const;
 
 /** Input schema. */
 export const TRACKER_SEARCH_INPUT = z.object({

@@ -8,6 +8,7 @@ import { McpServerAdapter } from '../adapters/mcp/mcp-server.ts';
 import { errorFields } from '../core/errors/error-fields.ts';
 import type { OperationsFactory } from '../domain/operations.ts';
 import { composeCore } from './compose-core.ts';
+import { installLifecycle } from './mcp-lifecycle.ts';
 
 /**
  * Starts the MCP server on standard input/output. A failed index build at start is logged and
@@ -24,4 +25,5 @@ export async function startMcpServer(operations?: OperationsFactory): Promise<vo
     logClose?.();
     core.close();
   };
+  installLifecycle({ proc: process, logger: core.logger, close: () => core.close(), closeServer: () => server.close() });
 }

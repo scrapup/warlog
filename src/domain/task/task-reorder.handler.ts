@@ -48,7 +48,8 @@ export class TaskReorderHandler implements OperationHandler<TaskReorderInput> {
       throw new WarlogError('VALIDATION', `Task(s) ${unknown.join(', ')} do not belong to epic ${epic.id}`, { unknown });
     }
     const listed = [...new Set(input.ordered_ids)];
-    const order = [...listed, ...siblings.map((t) => t.id).filter((id) => !listed.includes(id))];
+    const inList = new Set(listed);
+    const order = [...listed, ...siblings.map((t) => t.id).filter((id) => !inList.has(id))];
     const writer = this.writers(context);
     for (const [index, id] of order.entries()) {
       const task = requireInView(view, 'task', id);

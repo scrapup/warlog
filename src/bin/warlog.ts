@@ -5,8 +5,16 @@
 import { runCli } from '../adapters/cli/cli-builder.ts';
 import { composeCli, reportFatal } from '../compose/compose-cli.ts';
 
+const args = process.argv.slice(2);
+
 try {
-  process.exitCode = await runCli(process.argv.slice(2), composeCli());
+  if (args.length === 1 && args[0] === 'mcp') {
+    // The server composes its own (live) core: building the command line's core first would wire everything twice.
+    const { startMcpServer } = await import('../compose/compose-mcp.ts');
+    await startMcpServer();
+  } else {
+    process.exitCode = await runCli(args, composeCli());
+  }
 } catch (error: unknown) {
   process.exitCode = reportFatal(error);
 }

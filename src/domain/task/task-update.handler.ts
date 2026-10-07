@@ -9,7 +9,7 @@ import { requireInView } from '../shared/lookup.ts';
 import { entityRow } from '../shared/rows.ts';
 import type { WriterFactory } from '../shared/writer-factory.ts';
 import { applyTaskChange } from './task-change.ts';
-import { TASK_UPDATE_FIELDS } from './task-update.operation.ts';
+import { TASK_UPDATE_FIELDS } from './task-fields.ts';
 import type { TaskUpdateInput } from './task-update.operation.ts';
 
 /** Handles `task_update`. */

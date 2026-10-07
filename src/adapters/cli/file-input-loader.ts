@@ -83,7 +83,7 @@ interface RangedNode {
  * @throws {WarlogError} `VALIDATION` when the front matter is missing or unclosed.
  */
 function splitMarkdown(text: string, source: string): MarkdownParts {
-  const content = text.split('\r\n').join('\n');
+  const content = (text.startsWith('\uFEFF') ? text.slice(1) : text).split('\r\n').join('\n');
   const end = content.startsWith('---\n') ? content.indexOf('\n---', 3) : -1;
   if (end < 0) {
     throw new WarlogError('VALIDATION', `${source}:1:1 missing front matter`, { file: source, line: 1, col: 1 });

@@ -8,10 +8,22 @@ import { container, failure } from '../../../support/tracker-setup.ts';
 
 describe('template substitution', () => {
   it('[WL-10] replaces known {name} placeholders literally and reports the rest', () => {
-    expect(substitute('RT {feature} for {area} and {feature}', { feature: 'checkout' })).toEqual({ text: 'RT checkout for {area} and checkout', unresolved: ['area'] });
-    expect(substitute('{a b} {} {{x}} } {', { x: '1' })).toEqual({ text: '{a b} {} {1} } {', unresolved: [] });
-    expect(substitute('no placeholders', {})).toEqual({ text: 'no placeholders', unresolved: [] });
-    expect(substitute('{constructor}', {})).toEqual({ text: '{constructor}', unresolved: ['constructor'] });
+    expect(substitute('RT {feature} for {area} and {feature}', { feature: 'checkout' })).toEqual({ text: 'RT checkout for {area} and checkout', unresolved: ['area'], tooLong: false });
+    expect(substitute('{a b} {} {{x}} } {', { x: '1' })).toEqual({ text: '{a b} {} {1} } {', unresolved: [], tooLong: false });
+    expect(substitute('no placeholders', {})).toEqual({ text: 'no placeholders', unresolved: [], tooLong: false });
+    expect(substitute('{constructor}', {})).toEqual({ text: '{constructor}', unresolved: ['constructor'], tooLong: false });
+  });
+
+  it('[WL-48] many distinct unresolved names are all reported once', () => {
+    const names = Array.from({ length: 28_000 }, (_, i) => `a${i}`);
+    const result = substitute(names.map((n) => `{${n}}{${n}}`).join(''), {});
+    expect(result.unresolved).toEqual(names);
+  });
+
+  it('[WL-48] substitution stops when the result would pass the limit', () => {
+    expect(substitute('{a}{a}{a}', { a: 'x'.repeat(10) }, 25)).toEqual({ text: '', unresolved: [], tooLong: true });
+    expect(substitute('{a}{a}', { a: 'x'.repeat(10) }, 20)).toMatchObject({ text: 'x'.repeat(20), tooLong: false });
+    expect(substitute('{a}{a} tail', { a: 'x'.repeat(10) }, 20)).toMatchObject({ text: '', tooLong: true });
   });
 
   it('[WL-48] substitution stays linear on adversarial input', () => {
@@ -59,6 +71,31 @@ describe.each(['lazy', 'live'] as const)('template operations (%s index)', (mode
     await h.call('template_delete', { id: t['id'] });
     expect(isWarlogError(await failure(h.call('template_apply', { template_id: t['id'], epic_id: epicId })), 'NOT_FOUND')).toBe(true);
     expect(isWarlogError(await failure(h.call('template_apply', { template_id: '01J00000000000000000000099', epic_id: epicId })), 'NOT_FOUND')).toBe(true);
+  });
+
+  it('[WL-62] template_apply writes nothing when a substituted title or description would be invalid', async () => {
+    const h = trackerHarness({ mode });
+    const { epicId } = await container(h);
+    const t = await h.obj('template_create', { name: 'big', tasks: [{ title: 'fine' }, { title: 'T {v}' }] });
+    const before = new Map(h.fs.files);
+    const error = await failure(h.call('template_apply', { template_id: t['id'], epic_id: epicId, variables: { v: 'x'.repeat(600) } }));
+    expect(isWarlogError(error, 'VALIDATION') ? error.details : undefined).toEqual({ field: 'variables', task: 2 });
+    expect(new Map(h.fs.files)).toEqual(before);
+    const long = await h.obj('template_create', { name: 'long', tasks: [{ title: 'ok', description: '{v}'.repeat(30) }] });
+    const tooLong = await failure(h.call('template_apply', { template_id: long['id'], epic_id: epicId, variables: { v: 'y'.repeat(10_000) } }));
+    expect(isWarlogError(tooLong, 'VALIDATION') ? tooLong.details : undefined).toEqual({ field: 'variables', task: 1 });
+  });
+
+  it('[WL-62] template_apply refuses stored tasks that do not match the schema, creating nothing', async () => {
+    const h = trackerHarness({ mode: 'lazy' });
+    const { epicId } = await container(h);
+    const t = await h.obj('template_create', { name: 'edited', tasks: [{ title: 'one' }, { title: 'two' }] });
+    const file = [...h.fs.files.keys()].find((path) => path.includes(String(t['id']))) ?? '';
+    h.fs.files.set(file, (h.fs.files.get(file) ?? '').replace('title: two\n    priority: medium', 'title: 7\n    priority: urgent'));
+    const before = new Map(h.fs.files);
+    const error = await failure(h.call('template_apply', { template_id: t['id'], epic_id: epicId }));
+    expect(isWarlogError(error, 'INVALID_FILE') ? error.details : undefined).toMatchObject({ reason: 'template_tasks', id: t['id'] });
+    expect(new Map(h.fs.files)).toEqual(before);
   });
 
   it('[WL-10] templates work outside a repository', async () => {

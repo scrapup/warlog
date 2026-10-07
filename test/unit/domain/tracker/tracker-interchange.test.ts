@@ -129,6 +129,30 @@ describe('tracker export and import', () => {
     expect(isWarlogError(await failure(h.call('tracker_import', { data: { format_version: '2.0', project: { name: 'x' } } })), 'VALIDATION')).toBe(true);
   });
 
+  it.each([
+    ['a dependency cycle', { tasks: [{ _original_id: 1, title: 'A', depends_on: [2] }, { _original_id: 2, title: 'B', depends_on: [1] }] }, 'data.project.tasks', 'cycle'],
+    ['a longer cycle', { tasks: [{ _original_id: 1, title: 'A', depends_on: [3] }, { _original_id: 2, title: 'B', depends_on: [1] }, { _original_id: 3, title: 'C', depends_on: [2] }] }, 'data.project.tasks', 'cycle'],
+    ['a repeated task id', { tasks: [{ _original_id: 1, title: 'A' }, { _original_id: 1, title: 'B' }] }, 'data.project.tasks.1._original_id', 'duplicate'],
+    ['a repeated epic id', { epics: [{ _original_id: 5, name: 'A' }, { _original_id: 5, name: 'B' }] }, 'data.project.epics.1._original_id', 'duplicate'],
+    ['a repeated story id', { stories: [{ _original_id: 5, title: 'A' }, { _original_id: 5, title: 'B' }] }, 'data.project.stories.1._original_id', 'duplicate'],
+  ])('[WL-14] an export with %s writes nothing', async (_name, content, path, word) => {
+    const h = trackerHarness();
+    await container(h);
+    const before = new Map(h.fs.files);
+    const error = await failure(h.call('tracker_import', { data: { format_version: '1.3', project: { name: 'x', ...content } } }));
+    const issues = isWarlogError(error, 'VALIDATION') ? (error.details?.['issues'] as { path: string; message: string }[]) : [];
+    expect(issues).toEqual([expect.objectContaining({ path, message: expect.stringContaining(word) as unknown as string })]);
+    expect(new Map(h.fs.files)).toEqual(before);
+  });
+
+  it('[WL-14] an acyclic graph with a shared dependency and a self reference imports', async () => {
+    const h = trackerHarness();
+    await container(h);
+    const tasks = [{ _original_id: 1, title: 'A', depends_on: [1, 2, 3] }, { _original_id: 2, title: 'B', depends_on: [3] }, { _original_id: 3, title: 'C' }];
+    const result = await h.obj('tracker_import', { data: { format_version: '1.3', project: { name: 'dag', tasks } } });
+    expect(result['counts']).toMatchObject({ tasks: 3, dependencies: 3 });
+  });
+
   it('[WL-14] export picks WARLOG_PROJECT or the first project and fails on an empty store', async () => {
     const h = trackerHarness();
     expect(isWarlogError(await failure(h.call('tracker_export')), 'NOT_FOUND')).toBe(true);

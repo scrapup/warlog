@@ -61,6 +61,17 @@ describe.each(['lazy', 'live'] as const)('task dependencies (%s index)', (mode) 
     expect(await statusOf(h, b['id'])).toBe('blocked');
   });
 
+  it('[WL-13] repeating a status update repairs dependents left stale by an interrupted propagation', async () => {
+    const h = trackerHarness({ mode });
+    const { epicId } = await container(h);
+    const a = await task(h, epicId, 'A');
+    const b = await task(h, epicId, 'B', { depends_on: [a['id']] });
+    const file = [...h.fs.files.keys()].find((path) => path.includes(String(a['id']))) ?? '';
+    h.fs.files.set(file, (h.fs.files.get(file) ?? '').replace('status: todo', 'status: done'));
+    await h.call('task_update', { id: a['id'], status: 'done' });
+    expect(await statusOf(h, b['id'])).toBe('todo');
+  });
+
   it('[WL-13] replacing dependencies re-evaluates the task and refuses cycles', async () => {
     const h = trackerHarness({ mode });
     const { epicId } = await container(h);

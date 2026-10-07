@@ -26,6 +26,8 @@ export interface FieldSpec {
   readonly description: string;
   /** Human-readable type for help. */
   readonly typeLabel: string;
+  /** `false` for a list of free text, whose values may contain commas (repeat the flag instead). */
+  readonly splitOnComma?: boolean;
 }
 
 /** Internal view of a zod definition. */
@@ -50,6 +52,8 @@ interface SchemaNode {
   readonly def: SchemaDef;
   /** Description from `.describe()`. */
   readonly description?: string;
+  /** Longest length a string schema accepts (`null`/absent when unbounded or not a string). */
+  readonly maxLength?: number | null;
 }
 
 /** A schema node without its wrappers. */
@@ -68,7 +72,12 @@ interface KindLabel {
   readonly kind: FlagKind;
   /** Help label. */
   readonly typeLabel: string;
+  /** `false` for a list of free text. */
+  readonly splitOnComma?: boolean;
 }
+
+/** Longest element of a list that is still taken as a list of short names (tags, ids): longer ones are free text. */
+const MAX_SPLITTABLE_ELEMENT = 100;
 
 /** Kinds of scalar node types. */
 const SCALAR_KINDS: Readonly<Record<string, FlagKind>> = { string: 'string', number: 'number', boolean: 'boolean' };
@@ -122,6 +131,17 @@ function unwrap(node: SchemaNode): Unwrapped {
 }
 
 /**
+ * Kind of a list by its element: a list of long strings is free text, whose values may hold commas.
+ * @param element - Element schema node.
+ * @returns The kind, or `undefined` for elements a flag cannot carry.
+ */
+function arrayKind(element: SchemaNode): KindLabel | undefined {
+  const array = ARRAY_KINDS[element.def.type];
+  const freeText = element.def.type === 'string' && (element.maxLength ?? 0) > MAX_SPLITTABLE_ELEMENT;
+  return array === undefined || !freeText ? array : { ...array, splitOnComma: false };
+}
+
+/**
  * Kind and label of an unwrapped node.
  * @param node - Schema node.
  * @returns Kind and type label.
@@ -136,7 +156,7 @@ function kindOf(node: SchemaNode): KindLabel {
     return { kind: 'enum', typeLabel: Object.values(node.def.entries ?? {}).join(' | ') };
   }
   if (type === 'array' && node.def.element !== undefined) {
-    const array = ARRAY_KINDS[unwrap(node.def.element).node.def.type];
+    const array = arrayKind(unwrap(node.def.element).node);
     if (array !== undefined) {
       return array;
     }
@@ -172,7 +192,7 @@ export function fieldSpecs(schema: z.ZodObject): FieldSpec[] {
   return Object.entries(schema.shape).map(([key, value]) => {
     const field = asSchemaNode(value);
     const { node, optional, defaultValue } = unwrap(field);
-    const { kind, typeLabel } = kindOf(node);
+    const { kind, typeLabel, splitOnComma } = kindOf(node);
     const choices = node.def.type === 'enum' ? Object.values(node.def.entries ?? {}) : undefined;
     const description = field.description ?? node.description ?? '';
     return {
@@ -184,6 +204,7 @@ export function fieldSpecs(schema: z.ZodObject): FieldSpec[] {
       description,
       ...(defaultValue === undefined ? {} : { defaultValue }),
       ...(choices === undefined ? {} : { choices }),
+      ...(splitOnComma === undefined ? {} : { splitOnComma }),
     };
   });
 }
@@ -233,7 +254,8 @@ function toTypedText(text: string): unknown {
  * @returns The converted value.
  */
 export function convertFlagValue(spec: FieldSpec, raw: unknown): unknown {
-  const values = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => (typeof v === 'string' ? v.split(',') : [v]));
+  const split = spec.splitOnComma !== false;
+  const values = (Array.isArray(raw) ? raw : [raw]).flatMap((v) => (typeof v === 'string' && split ? v.split(',') : [v]));
   switch (spec.kind) {
     case 'number':
       return typeof raw === 'string' ? toNumber(raw) : raw;

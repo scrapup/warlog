@@ -5,6 +5,7 @@ import { WarlogError } from '../../core/errors/warlog-error.ts';
 import type { IndexedEntity, StoreView } from '../../core/ports/store-view.port.ts';
 import { byCreation, listRow, omit, text } from '../shared/rows.ts';
 import type { Row } from '../shared/rows.ts';
+import { TEMPLATE_TASKS } from './template-fields.ts';
 import type { TemplateTask } from './template-fields.ts';
 
 /**
@@ -29,6 +30,21 @@ export function assertNameFree(view: StoreView, name: string, self?: string): vo
 export function templateTasks(template: IndexedEntity): TemplateTask[] {
   const tasks = template.record.data['tasks'];
   return Array.isArray(tasks) ? (tasks as TemplateTask[]) : [];
+}
+
+/**
+ * Tasks of a template checked against the schema: the file may have been edited by hand or come
+ * from another clone, and applying a malformed definition would stop half way through.
+ * @param template - Template.
+ * @returns The task definitions.
+ * @throws {WarlogError} `INVALID_FILE` when the stored tasks do not match the schema.
+ */
+export function checkedTemplateTasks(template: IndexedEntity): TemplateTask[] {
+  const parsed = TEMPLATE_TASKS.safeParse(template.record.data['tasks']);
+  if (!parsed.success) {
+    throw new WarlogError('INVALID_FILE', `template ${template.id}: the stored tasks are not valid`, { reason: 'template_tasks', id: template.id });
+  }
+  return parsed.data;
 }
 
 /**

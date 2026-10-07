@@ -28,3 +28,6 @@ export const DUE_DATE = z.string().max(32).describe('Due date (YYYY-MM-DD)');
 
 /** Hours (estimate or actual). */
 export const HOURS = z.number().min(0).max(100_000);
+
+/** Input fields copied to the front matter. */
+export const TASK_UPDATE_FIELDS = ['title', 'code', 'status', 'priority', 'assigned_to', 'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags'] as const;

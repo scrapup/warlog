@@ -52,17 +52,24 @@ function exportTask(view: StoreView, task: IndexedEntity): Row {
 }
 
 /**
- * Live tasks with a given epic (`''` = none) of a project, in manual order.
+ * Live tasks of a project grouped by epic (`''` = none), each group in manual order. One pass over
+ * the tasks, so the cost does not grow with the number of epics.
  * @param view - View.
  * @param projectId - Project.
- * @param epicId - Epic id or `''`.
- * @returns Tasks.
+ * @returns Tasks by epic id.
  */
-function tasksOf(view: StoreView, projectId: string, epicId: string): IndexedEntity[] {
-  return view
-    .list('task', projectId)
-    .filter((t) => !t.deleted && text(t, 'epic_id') === epicId)
-    .sort((a, b) => sortOrder(a) - sortOrder(b) || byCreation(a, b));
+function tasksByEpic(view: StoreView, projectId: string): Map<string, IndexedEntity[]> {
+  const groups = new Map<string, IndexedEntity[]>();
+  for (const task of view.list('task', projectId)) {
+    if (!task.deleted) {
+      const epicId = text(task, 'epic_id');
+      const group = groups.get(epicId) ?? [];
+      group.push(task);
+      groups.set(epicId, group);
+    }
+  }
+  groups.forEach((group) => group.sort((a, b) => sortOrder(a) - sortOrder(b) || byCreation(a, b)));
+  return groups;
 }
 
 /**
@@ -95,11 +102,12 @@ export class TrackerExportHandler implements OperationHandler<TrackerExportInput
     if (project === undefined) {
       throw new WarlogError('NOT_FOUND', 'No projects found. Create a project first.', { type: 'project' });
     }
+    const tasks = tasksByEpic(view, project.id);
     const epics = view
       .list('epic', project.id)
       .filter((e) => !e.deleted)
       .sort(byEpicOrder)
-      .map((e) => ({ _original_id: e.id, name: text(e, 'name'), description: e.record.body, ...pick(e, ['status', 'priority', 'sort_order', 'branch']), tags: tagsOf(e), tasks: tasksOf(view, project.id, e.id).map((t) => exportTask(view, t)) }));
+      .map((e) => ({ _original_id: e.id, name: text(e, 'name'), description: e.record.body, ...pick(e, ['status', 'priority', 'sort_order', 'branch']), tags: tagsOf(e), tasks: (tasks.get(e.id) ?? []).map((t) => exportTask(view, t)) }));
     const stories = view
       .list('story', project.id)
       .filter((s) => !s.deleted)
@@ -111,7 +119,7 @@ export class TrackerExportHandler implements OperationHandler<TrackerExportInput
         format_version: '1.3',
         exported_at: context.clock.now().toISOString(),
         generator: 'warlog',
-        project: { name: text(project, 'name'), description: project.record.body, status: text(project, 'status'), tags: tagsOf(project), epics, stories, tasks: tasksOf(view, project.id, '').map((t) => exportTask(view, t)) },
+        project: { name: text(project, 'name'), description: project.record.body, status: text(project, 'status'), tags: tagsOf(project), epics, stories, tasks: (tasks.get('') ?? []).map((t) => exportTask(view, t)) },
         notes: exportNotes(view, project.id),
       },
     };
