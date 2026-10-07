@@ -12,9 +12,17 @@ import type { ActivitySummary } from '../../core/ports/store-view.port.ts';
  * Reads the activity summary of the call's roots.
  * @param fs - File system.
  * @param context - Call context.
- * @returns Usage per entity and observations per command.
+ * @returns Usage per entity and observations per command; unreadable lines and files are reported as
+ * warnings (`activity.invalid_lines`, `activity.unreadable_files`), since what is derived from them is partial.
  */
-export function freshActivity(fs: FileSystem, context: OperationContext): Promise<ActivitySummary> {
+export async function freshActivity(fs: FileSystem, context: OperationContext): Promise<ActivitySummary> {
   const roots = [context.roots.global, ...(context.roots.repository === undefined ? [] : [context.roots.repository.root])];
-  return aggregateActivity(fs, roots, context.clock.now());
+  const summary = await aggregateActivity(fs, roots, context.clock.now());
+  if (summary.invalidLines > 0) {
+    context.warnings.push('activity.invalid_lines');
+  }
+  if (summary.unreadableFiles > 0) {
+    context.warnings.push('activity.unreadable_files');
+  }
+  return summary;
 }

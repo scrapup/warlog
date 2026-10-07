@@ -124,6 +124,7 @@ describe.each(['lazy', 'live'] as const)('links (%s index)', (mode) => {
     const h = trackerHarness({ mode });
     const { a } = await graph(h);
     expect(await h.obj('link_add', { id: a, rel: 'derived_from', target: MISSING })).toMatchObject({ pending: true, message: 'Link added; the target is not in the store yet (pending).' });
+    expect(h.warnings).toContain('link.pending_target');
     expect((await h.rows('links_of', { id: a }))[0]).toMatchObject({ rel: 'derived_from', type: 'pending', pending: true, id: MISSING });
     expect((await h.view()).pendingLinks()).toEqual([{ from: a, rel: 'derived_from', target: MISSING }]);
     expect((await h.rows('links_of', { id: MISSING, direction: 'in' }))[0]).toMatchObject({ direction: 'in', rel: 'derived_from', id: a });

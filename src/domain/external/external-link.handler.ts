@@ -39,7 +39,7 @@ export class ExternalLinkHandler implements OperationHandler<ExternalLinkInput> 
     const holder = entityById(view, input.id);
     assertHolder(holder);
     const other = view.byExternal(input.system, input.key);
-    if (other !== undefined && other.id !== holder.id) {
+    if (other !== undefined && !other.deleted && other.id !== holder.id) {
       throw new WarlogError('VALIDATION', `${input.system} ${input.key} is already linked to ${other.type} ${other.id}`, { field: 'key', holder: other.id });
     }
     const current = externalsOfEntity(holder);

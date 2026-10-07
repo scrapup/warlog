@@ -93,6 +93,26 @@ export function varRepositoryFactory(fs: FileSystem, guard: PathGuard): VarRepos
   return (request) => new VarRepository({ fs, guard, ...request });
 }
 
+/** A parsed variable file whose type and revision were checked. */
+interface ValidShape extends Record<string, unknown> {
+  /** Declared type. */
+  type: VarType;
+  /** Revision. */
+  rev: number;
+}
+
+/**
+ * Tells whether a parsed file has the fields a variable needs. A deletion mark must be text:
+ * `deleted_at: null` or `false`, left by a hand edit, is not a readable state.
+ * @param data - Parsed file.
+ * @param name - Expected name.
+ * @returns `true` when the shape is valid (the type is a variable type and the revision an integer).
+ */
+function hasVarShape(data: Record<string, unknown>, name: string): data is ValidShape {
+  const deletionOk = !('deleted_at' in data) || typeof data['deleted_at'] === 'string';
+  return data['name'] === name && isVarType(data['type']) && Number.isSafeInteger(data['rev']) && 'value' in data && deletionOk;
+}
+
 /**
  * Reads a record from parsed YAML, checking its shape and that the value has its declared type.
  * @param data - Parsed file.
@@ -102,7 +122,7 @@ export function varRepositoryFactory(fs: FileSystem, guard: PathGuard): VarRepos
  * @throws {WarlogError} `INVALID_FILE` when the file is malformed or the value does not match its type.
  */
 function toRecord(data: unknown, path: string, name: string): VarRecord {
-  if (!isPlainRecord(data) || data['name'] !== name || !isVarType(data['type']) || !Number.isSafeInteger(data['rev']) || !('value' in data)) {
+  if (!isPlainRecord(data) || !hasVarShape(data, name)) {
     throw new WarlogError('INVALID_FILE', `variable ${name}: name, type, value or rev are invalid`, { reason: 'var_fields', file: path });
   }
   try {
@@ -110,7 +130,32 @@ function toRecord(data: unknown, path: string, name: string): VarRecord {
   } catch {
     throw new WarlogError('INVALID_FILE', `variable ${name}: value does not match type ${data['type']}`, { reason: 'var_type', file: path });
   }
-  return data as unknown as VarRecord;
+  return {
+    name,
+    type: data['type'],
+    value: data['value'],
+    rev: Number(data['rev']),
+    updated_at: typeof data['updated_at'] === 'string' ? data['updated_at'] : '',
+    machine: typeof data['machine'] === 'string' ? data['machine'] : '',
+    ...(isPlainRecord(data['schema']) ? { schema: data['schema'] } : {}),
+    ...(typeof data['deleted_at'] === 'string' ? { deleted_at: data['deleted_at'] } : {}),
+    ...(typeof data['deleted_by'] === 'string' ? { deleted_by: data['deleted_by'] } : {}),
+  };
+}
+
+/**
+ * Serializes a record, refusing one that could not be read back: files above the limit are
+ * refused on read, so writing one would leave a variable that cannot be read, replaced or deleted.
+ * @param record - Record to store.
+ * @returns The YAML text.
+ * @throws {WarlogError} `VALIDATION` (`too_large`) when the file would exceed the limit.
+ */
+function serialize(record: VarRecord): string {
+  const text = stringifyYaml(record);
+  if (Buffer.byteLength(text) > MAX_STORE_FILE_BYTES) {
+    throw new WarlogError('VALIDATION', `variable ${record.name} would be larger than ${MAX_STORE_FILE_BYTES / (1024 * 1024)} MiB once stored`, { field: 'value', reason: 'too_large' });
+  }
+  return text;
 }
 
 /** Reads and writes variable files. */
@@ -159,7 +204,7 @@ export class VarRepository {
         updated_at: this.deps.clock.now().toISOString(),
         machine: await this.deps.machine.get(),
       };
-      await this.deps.fs.writeFileAtomic(path, stringifyYaml(record));
+      await this.deps.fs.writeFileAtomic(path, serialize(record));
       return record;
     });
   }
@@ -186,7 +231,7 @@ export class VarRepository {
         deleted_at: this.deps.clock.now().toISOString(),
         deleted_by: by,
       };
-      await this.deps.fs.writeFileAtomic(path, stringifyYaml(record));
+      await this.deps.fs.writeFileAtomic(path, serialize(record));
       return existing;
     });
   }

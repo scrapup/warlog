@@ -39,6 +39,9 @@ export class LinkAddHandler implements OperationHandler<LinkAddInput> {
     }
     const links = linksOfEntity(source);
     const pending = parseLinkTarget(input.target)?.kind === 'entity' && view.get(input.target) === undefined;
+    if (pending) {
+      context.warnings.push('link.pending_target');
+    }
     const result = { id: source.id, rel: input.rel, target: input.target, pending };
     if (hasLink(links, input.rel, input.target)) {
       return { kind: 'object', value: { message: 'Link already exists.', ...result } };
