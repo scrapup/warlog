@@ -7,6 +7,7 @@ import type { OperationHandler } from '../../core/mediator/operation-definition.
 import type { OperationResult } from '../../core/mediator/operation-result.ts';
 import { isPlainRecord } from '../../core/security/plain-record.ts';
 import type { MemoryScope } from '../memory/memory.schema.ts';
+import { answerOf } from '../questionnaire/own-answer.ts';
 import { requireEntity } from '../shared/lookup.ts';
 import { entityRow, text } from '../shared/rows.ts';
 import type { WriterFactory } from '../shared/writer-factory.ts';
@@ -39,7 +40,7 @@ export class ResponsePromoteHandler implements OperationHandler<ResponsePromoteI
   async handle(input: ResponsePromoteInput, context: OperationContext): Promise<OperationResult> {
     const response = await requireEntity(context.index, 'response', input.response_id);
     const answers = response.record.data['answers'];
-    const lesson = promotableText(isPlainRecord(answers) ? answers[input.question_id] : undefined, input.item_index);
+    const lesson = promotableText(isPlainRecord(answers) ? answerOf(answers, input.question_id) : undefined, input.item_index);
     const scope: MemoryScope = input.scope ?? (context.roots.repository === undefined ? 'global' : 'repo');
     const title = input.title ?? lesson.split('\n')[0]?.slice(0, TITLE_CHARS) ?? lesson;
     const record = await this.writers(context).create(

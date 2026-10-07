@@ -153,6 +153,31 @@ describe('question types', () => {
 });
 
 describe('conditions', () => {
+  it('[WL-29] a question named like an Object.prototype member is optional and unanswered, not text', () => {
+    const optional = q({ id: 'constructor', type: 'text' });
+    expect(answerProblems([optional], {})).toEqual([]);
+    expect(answerProblems([q({ id: 'constructor', type: 'text', required: true })], {})).toEqual([{ path: 'answers.constructor', message: 'is required' }]);
+    const dependent = q({ id: 'next', type: 'text', when: { question: 'constructor', not_equals: 'x' } });
+    expect(answerProblems([optional, dependent], { next: 'a' })).toEqual([{ path: 'answers.next', message: expect.stringContaining('not applicable') as unknown as string }]);
+    expect(applies({ question: 'constructor', equals: 'x' }, {})).toBe(false);
+  });
+
+  it('[WL-29] a text is refused for its size before it is scanned, and control characters are still refused', () => {
+    const text = q({ type: 'text' });
+    expect(checkAnswer(text, `${'x'.repeat(2_001)}\u0000`)).toBe('must be at most 2000 characters');
+    expect(checkAnswer(text, 'a\u0000b')).toBe('must not contain control characters');
+    expect(checkAnswer(text, 'tab\tand\r\nline\u00e9 \u{1F600}')).toBeUndefined();
+    expect(checkAnswer(text, 'x'.repeat(2_000))).toBeUndefined();
+  });
+
+  it('[WL-29] multi_choice with other answers refuses blank choices and has a ceiling without max', () => {
+    const open = q({ type: 'multi_choice', options: ['a', 'b'], allow_other: true });
+    expect(checkAnswer(open, ['a', '  '])).toBe('each choice must not be blank');
+    expect(checkAnswer(open, Array.from({ length: 100 }, (_, i) => `o${i}`))).toBeUndefined();
+    expect(checkAnswer(open, Array.from({ length: 101 }, (_, i) => `o${i}`))).toBe('allows at most 100 item(s)');
+    expect(checkAnswer(q({ type: 'multi_choice', options: ['a', 'b'], max: 1 }), ['a', 'b'])).toBe('allows at most 1 item(s)');
+  });
+
   it('[WL-30] a question applies when its condition on an earlier answer holds', () => {
     expect(applies(undefined, {})).toBe(true);
     expect(applies({ question: 'o', equals: 'a' }, { o: 'a' })).toBe(true);

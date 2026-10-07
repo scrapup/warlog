@@ -111,7 +111,9 @@ describe.each(['lazy', 'live'] as const)('responses (%s index)', (mode) => {
     expect((await h.rows('response_list', { questionnaire: 'aar' })).map((r) => r['id'])).toEqual([response['id']]);
     expect((await h.rows('response_list', { subject_id: other.epicId }))[0]).toMatchObject({ questionnaire: 'check', questionnaire_version: 1, subject_type: 'epic', answered: 1 });
     expect((await h.rows('response_list', { project_id: other.projectId })).map((r) => r['id'])).toEqual([second['id']]);
-    expect((await h.rows('response_list', { subject_id: taskId, limit: 1 })).length).toBe(1);
+    await h.call('response_create', { questionnaire: 'aar', subject_id: taskId, answers: AAR });
+    expect(await h.rows('response_list', { subject_id: taskId })).toHaveLength(2);
+    expect(await h.rows('response_list', { subject_id: taskId, limit: 1 })).toHaveLength(1);
     expect(isWarlogError(await failure(h.call('response_get', { id: '01J00000000000000000000099' })), 'NOT_FOUND')).toBe(true);
   });
 });

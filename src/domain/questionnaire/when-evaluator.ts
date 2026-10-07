@@ -3,6 +3,7 @@
  * earlier answer. One comparison, no expressions.
  */
 import type { When } from './question.schema.ts';
+import { answerOf } from './own-answer.ts';
 
 /** Answers by question id. */
 export type Answers = Readonly<Record<string, unknown>>;
@@ -28,7 +29,7 @@ export function applies(when: When | undefined, answers: Answers): boolean {
   if (when === undefined) {
     return true;
   }
-  const answer = answers[when.question];
+  const answer = answerOf(answers, when.question);
   if (answer === undefined) {
     return false;
   }

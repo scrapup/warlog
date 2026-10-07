@@ -3,6 +3,7 @@
  * of the questionnaire, so a response reads well in any Markdown viewer.
  */
 import type { Question } from '../questionnaire/question-type-registry.ts';
+import { answerOf } from '../questionnaire/own-answer.ts';
 import { renderAnswer } from '../questionnaire/question-type-registry.ts';
 
 /**
@@ -13,7 +14,7 @@ import { renderAnswer } from '../questionnaire/question-type-registry.ts';
  */
 export function responseBody(questions: readonly Question[], answers: Readonly<Record<string, unknown>>): string {
   return questions
-    .filter((q) => answers[q.id] !== undefined && answers[q.id] !== null)
-    .map((q) => `## ${q.prompt}\n\n${renderAnswer(q, answers[q.id])}`)
+    .filter((q) => answerOf(answers, q.id) !== undefined && answerOf(answers, q.id) !== null)
+    .map((q) => `## ${q.prompt}\n\n${renderAnswer(q, answerOf(answers, q.id))}`)
     .join('\n\n');
 }
