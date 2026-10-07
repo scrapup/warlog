@@ -11,6 +11,8 @@ export interface Substituted {
   readonly text: string;
   /** Placeholder names without a value. */
   readonly unresolved: readonly string[];
+  /** `true` when the text would pass `maxLength`; the scan stops there and `text` is empty. */
+  readonly tooLong: boolean;
 }
 
 /**
@@ -22,23 +24,55 @@ function isName(name: string): boolean {
   return name.length > 0 && [...name].every(isWord);
 }
 
+/** Positions of a brace pair. */
+interface Braces {
+  /** Opening brace, `-1` when none precedes the closing one. */
+  readonly open: number;
+  /** Closing brace, `-1` when none is left. */
+  readonly close: number;
+}
+
+/**
+ * Finds the next closing brace and the opening brace nearest to it.
+ * @param text - Text.
+ * @param at - Where to start.
+ * @returns Positions, `-1` when absent (`open` is `-1` when no `{` precedes the `}`).
+ */
+function nextBraces(text: string, at: number): Braces {
+  const close = text.indexOf('}', at);
+  const inner = close < 0 ? -1 : text.slice(at, close).lastIndexOf('{');
+  return { open: inner < 0 ? -1 : at + inner, close };
+}
+
+/**
+ * Builds the result; an over-long text is dropped, not returned.
+ * @param pieces - Pieces of the text.
+ * @param unresolved - Unresolved names.
+ * @param tooLong - Whether the limit was passed.
+ * @returns The result.
+ */
+function resultOf(pieces: readonly string[], unresolved: ReadonlySet<string>, tooLong: boolean): Substituted {
+  return { text: tooLong ? '' : pieces.join(''), unresolved: [...unresolved], tooLong };
+}
+
 /**
  * Replaces the placeholders of a text.
  * @param text - Template text.
  * @param variables - Values by name.
- * @returns The text and the unresolved names.
+ * @param maxLength - Longest result wanted: a short template with a long value repeated many
+ *   times must not build hundreds of megabytes before anyone looks at the size.
+ * @returns The text, the unresolved names and whether the limit was passed.
  */
-export function substitute(text: string, variables: Readonly<Record<string, string>>): Substituted {
+export function substitute(text: string, variables: Readonly<Record<string, string>>, maxLength = Number.POSITIVE_INFINITY): Substituted {
   const out: string[] = [];
-  const unresolved: string[] = [];
+  let length = 0;
+  const unresolved = new Set<string>();
   let at = 0;
   for (;;) {
-    const close = text.indexOf('}', at);
+    const { open, close } = nextBraces(text, at);
     if (close < 0) {
       break;
     }
-    const inner = text.slice(at, close).lastIndexOf('{');
-    const open = inner < 0 ? -1 : at + inner;
     if (open < 0) {
       out.push(text.slice(at, close + 1));
       at = close + 1;
@@ -46,12 +80,18 @@ export function substitute(text: string, variables: Readonly<Record<string, stri
     }
     const name = text.slice(open + 1, close);
     const known = isName(name) && Object.hasOwn(variables, name);
-    if (isName(name) && !known && !unresolved.includes(name)) {
-      unresolved.push(name);
+    if (!known && isName(name)) {
+      unresolved.add(name);
     }
-    out.push(text.slice(at, open), known ? String(variables[name]) : text.slice(open, close + 1));
+    const head = text.slice(at, open);
+    const value = known ? String(variables[name]) : text.slice(open, close + 1);
+    length += head.length + value.length;
+    if (length > maxLength) {
+      return resultOf([], unresolved, true);
+    }
+    out.push(head, value);
     at = close + 1;
   }
   out.push(text.slice(at));
-  return { text: out.join(''), unresolved };
+  return resultOf(out, unresolved, length + text.length - at > maxLength);
 }

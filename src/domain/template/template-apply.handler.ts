@@ -10,8 +10,8 @@ import { entityRow, text } from '../shared/rows.ts';
 import type { WriterFactory } from '../shared/writer-factory.ts';
 import { newTaskFields } from '../task/task-create.handler.ts';
 import type { TemplateApplyInput } from './template-apply.operation.ts';
-import { templateTasks } from './template-rules.ts';
-import { substitute } from './template-substitution.ts';
+import { planTasks } from './template-plan.ts';
+import { checkedTemplateTasks } from './template-rules.ts';
 
 /** Handles `template_apply`. */
 export class TemplateApplyHandler implements OperationHandler<TemplateApplyInput> {
@@ -31,7 +31,7 @@ export class TemplateApplyHandler implements OperationHandler<TemplateApplyInput
    * @param input - Validated input.
    * @param context - Call context.
    * @returns `{ message, template_name, epic_name, tasks_created, tasks, unresolved }`.
-   * @throws {WarlogError} `NOT_FOUND` for an unknown or deleted template, or an unknown epic.
+   * @throws {WarlogError} `NOT_FOUND` for an unknown or deleted template, or an unknown epic; `VALIDATION` when a substituted title or description would be invalid (nothing is created); `INVALID_FILE` for malformed stored tasks.
    */
   async handle(input: TemplateApplyInput, context: OperationContext): Promise<OperationResult> {
     const view = await context.index.full();
@@ -40,22 +40,20 @@ export class TemplateApplyHandler implements OperationHandler<TemplateApplyInput
       throw new WarlogError('NOT_FOUND', `template ${template.id} not found`, { type: 'template', id: template.id });
     }
     const epic = requireInView(view, 'epic', input.epic_id);
-    const variables = input.variables ?? {};
+    const projectId = String(epic.projectId);
+    const planned = planTasks(checkedTemplateTasks(template), input.variables ?? {});
     const writer = this.writers(context);
-    const unresolved = new Set<string>();
     const tasks = [];
-    for (const def of templateTasks(template)) {
-      const title = substitute(def.title, variables);
-      const description = substitute(def.description ?? '', variables);
-      [...title.unresolved, ...description.unresolved].forEach((n) => unresolved.add(n));
+    for (const def of planned.tasks) {
       const fields = newTaskFields(
-        { projectId: String(epic.projectId), epicId: epic.id, storyId: undefined },
-        { title: title.text, status: 'todo', priority: def.priority, tags: def.tags ?? [], extra: def.estimated_hours === undefined ? {} : { estimated_hours: def.estimated_hours } },
+        { projectId, epicId: epic.id, storyId: undefined },
+        { title: def.title, status: 'todo', priority: def.priority, tags: def.tags, extra: def.estimated_hours === undefined ? {} : { estimated_hours: def.estimated_hours } },
       );
-      const ref = { type: 'task' as const, id: context.ids.next(), scope: 'repo' as const, projectId: String(epic.projectId) };
-      tasks.push(entityRow(await writer.create(ref, fields, description.text, `Task '${title.text}' created from template '${text(template, 'name')}'`)));
+      const ref = { type: 'task' as const, id: context.ids.next(), scope: 'repo' as const, projectId };
+      tasks.push(entityRow(await writer.create(ref, fields, def.description, `Task '${def.title}' created from template '${text(template, 'name')}'`)));
     }
+    const unresolved = planned.unresolved;
     const names = { template_name: text(template, 'name'), epic_name: text(epic, 'name') };
-    return { kind: 'object', value: { message: `Applied template '${names.template_name}' to epic '${names.epic_name}'`, ...names, tasks_created: tasks.length, tasks, unresolved: [...unresolved] } };
+    return { kind: 'object', value: { message: `Applied template '${names.template_name}' to epic '${names.epic_name}'`, ...names, tasks_created: tasks.length, tasks, unresolved } };
   }
 }

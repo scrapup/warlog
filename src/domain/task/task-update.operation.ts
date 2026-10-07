@@ -30,9 +30,6 @@ export const TASK_UPDATE_INPUT = z.object({
 /** Parsed input. */
 export type TaskUpdateInput = z.infer<typeof TASK_UPDATE_INPUT>;
 
-/** Input fields copied to the front matter. */
-export const TASK_UPDATE_FIELDS = ['title', 'code', 'status', 'priority', 'assigned_to', 'estimated_hours', 'actual_hours', 'due_date', 'source_ref', 'sort_order', 'tags'] as const;
-
 /**
  * Builds the definition.
  * @param writers - Writer factory.

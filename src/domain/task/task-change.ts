@@ -91,7 +91,10 @@ export async function applyTaskChange(view: StoreView, writer: TrackerWriter, ta
     events.push(...replaceDependencies(view, task, patch, change.dependsOn, title));
   }
   const record = await writer.update(task, change.description === undefined ? { patch } : { patch, body: change.description }, events);
-  if ((text(task, 'status') === 'done') !== (record.data['status'] === 'done')) {
+  if (change.fields['status'] !== undefined || (text(task, 'status') === 'done') !== (record.data['status'] === 'done')) {
+    // Also when the status did not change: a failed propagation (a dependent changed concurrently)
+    // leaves dependents stale, and repeating the call must repair them. Propagation skips
+    // dependents that are already right, so a repeat writes nothing.
     await propagate(view, writer, task.id);
   }
   return record;
@@ -133,16 +136,28 @@ function replaceDependencies(view: StoreView, task: IndexedEntity, patch: Record
  */
 export async function propagate(view: StoreView, writer: TrackerWriter, id: string): Promise<void> {
   for (const dependent of dependentsOf(view, id)) {
-    const dependsOn = idsIn(dependent, 'depends_on');
-    const unmet = unmetIn(view, dependsOn);
-    const before = text(dependent, 'status');
-    const decision = decideStatus(before, dependsOn.length, unmet.length, false);
-    const blocked = unmet.length > 0 ? unmet : undefined;
-    if (decision.status === before && sameIds(idsIn(dependent, 'blocked_by_deps'), unmet)) {
-      continue;
-    }
-    await writer.update(dependent, { patch: { status: decision.status, blocked_by_deps: blocked } }, transitionEvents(text(dependent, 'title'), before, decision, unmet));
+    await reevaluate(view, writer, dependent);
   }
+}
+
+/**
+ * Re-evaluates one task against the state of its dependencies, writing only when its status or
+ * its list of unmet dependencies is out of date.
+ * @param view - View.
+ * @param writer - Writer of the call.
+ * @param task - Task as seen.
+ * @returns When the task is up to date.
+ * @throws {WarlogError} `CONFLICT` when the task changed concurrently.
+ */
+export async function reevaluate(view: StoreView, writer: TrackerWriter, task: IndexedEntity): Promise<void> {
+  const dependsOn = idsIn(task, 'depends_on');
+  const unmet = unmetIn(view, dependsOn);
+  const before = text(task, 'status');
+  const decision = decideStatus(before, dependsOn.length, unmet.length, false);
+  if (decision.status === before && sameIds(idsIn(task, 'blocked_by_deps'), unmet)) {
+    return;
+  }
+  await writer.update(task, { patch: { status: decision.status, blocked_by_deps: unmet.length > 0 ? unmet : undefined } }, transitionEvents(text(task, 'title'), before, decision, unmet));
 }
 
 /**
