@@ -1,6 +1,6 @@
 {
   "name": "@scrapup/warlog",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "File-based memory and execution ledger for AI coding agents",
   "license": "MIT",
   "author": "scrapup",

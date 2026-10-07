@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/scrapup/warlog/compare/v1.1.3...v1.1.4) (2026-10-07)
+
+
+### Bug Fixes
+
+* **questionnaire:** multi-spec review findings, batch Q ([#28](https://github.com/scrapup/warlog/issues/28)) ([f1b8bab](https://github.com/scrapup/warlog/commit/f1b8babe88712be0466bd831cfe5a284e3473584))
+
 ## [1.1.3](https://github.com/scrapup/warlog/compare/v1.1.2...v1.1.3) (2026-10-07)
 
 
